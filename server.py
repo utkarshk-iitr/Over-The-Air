@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import ssl
 import os
 import socket
+import json
 
 def get_local_ip():
     try:
@@ -14,6 +15,38 @@ def get_local_ip():
     except:
         return "127.0.0.1"
 
+class HTTPSHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/':
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+            self.wfile.write(b'<html><body><h1>HTTPS Server Working</h1></body></html>')
+        else:
+            self.send_response(404)
+            self.end_headers()
+    
+    def do_POST(self):
+        content_length = int(self.headers.get('Content-Length', 0))
+        post_data = self.rfile.read(content_length)
+        
+        try:
+            if self.headers.get('Content-Type') == 'application/json':
+                data = json.loads(post_data.decode('utf-8'))
+                response_data = {"status": "received", "data": data}
+            else:
+                response_data = {"status": "received", "bytes": len(post_data)}
+            
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(response_data).encode('utf-8'))
+        except Exception as e:
+            self.send_response(400)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+
 def create_https_server():
     server_ip = get_local_ip()
     
@@ -24,7 +57,7 @@ def create_https_server():
         os.system(cert_command)
     
     server_address = ('0.0.0.0', 8443)
-    httpd = HTTPServer(server_address, SimpleHTTPRequestHandler)
+    httpd = HTTPServer(server_address, HTTPSHandler)
     
     context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     context.load_cert_chain('cert.pem', 'key.pem')

@@ -1,0 +1,4 @@
+Server: https://10.81.75.97:8443
+10.81.8.237 - - [03/Aug/2025 00:04:34] "GET / HTTP/1.1" 200 -
+10.81.8.237 - - [03/Aug/2025 00:04:34] code 501, message Unsupported method ('POST')
+10.81.8.237 - - [03/Aug/2025 00:04:34] "POST /test HTTP/1.1" 501 -

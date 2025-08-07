@@ -35,6 +35,7 @@ def handle_client(client_socket, address):
                 exe = open(f"update_{version}.exe","rb").read()
                 client_socket.sendall(exe)
                 client_socket.shutdown(socket.SHUT_WR)
+                print("[INFO] File sent successfully")
 
     except Exception as e:
         print(f"[ERROR] Error handling client {address}: {e}")

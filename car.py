@@ -18,8 +18,10 @@ def menu():
 def get_curr_ver():
     """Simulate fetching current version from the car's system."""
 
+def install_update():
+    """Simulate installing the update."""
+
 def receive_messages(client_socket):
-    print("\n[INFO] Recieving from server...")
     while True:
         try:
             message = client_socket.recv(1024).decode('utf-8')
@@ -33,6 +35,7 @@ def check_for_update(client_socket):
     global avlb_version
     client_socket.send("check".encode('utf-8'))
     avlb_version = receive_messages(client_socket)
+    print("Current version:", curr_version)
     print("Server has version:",avlb_version)
 
 def get_exe(client_socket):
@@ -81,6 +84,11 @@ def start_client():
                     print("You are already on the latest version.")
                 else:
                     get_exe(client_socket)
+            elif choice == '3':
+                print("Installing updates...")
+                install_update()
+                print("Update installed successfully!")
+                curr_version = avlb_version
             elif choice == '4':
                 break
             else:

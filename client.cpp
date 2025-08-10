@@ -63,15 +63,17 @@ void get_curr_version() {
 }
 
 void get_server_version(int sock) {
-    send_command(sock, "check");
+    send(sock,"check",5,0);
     char buffer[BUFFER_SIZE];
     recv(sock, buffer, BUFFER_SIZE, 0);
     avlb_version = buffer;
+    cout<<"Current version: "<<curr_version<<endl;
     cout << "Available version: " << avlb_version << endl;
 }
 
 void handle_install(){
     cout<<"Installing updates..."<<endl;
+    curr_version = avlb_version;
 }
 
 int main(int argc, char *argv[]){
@@ -139,9 +141,9 @@ void send_command(int sock, string command){
     cout << buffer;
 }
 
-// Modified handle_get function
 void handle_get(int sock, string filename) {
     string command = "get " + filename;
+    filename = "car_update_" + filename + ".exe";
 
     if(curr_version==avlb_version){
         cout<<"You are using the latest version."<<endl;
@@ -149,7 +151,6 @@ void handle_get(int sock, string filename) {
     }
     send(sock, command.c_str(), command.size(), 0);
 
-    // Read exactly 2 bytes to check for "OK"
     char ok[2];
     if (!recv_all(sock, ok, 2) || strncmp(ok, "OK", 2) != 0) {
         cout << "File not found on server or bad response." << endl;

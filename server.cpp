@@ -192,7 +192,6 @@ void *handle_client(void *client_socket){
             cout<<"[INFO] Client requested current server version."<<endl;
             get_srvr_ver();
             send(sock,server_ver.c_str(),server_ver.size(),0);
-            cout<<"add"<<endl;
         }
 
         else if (command.substr(0, 3) == "get") {

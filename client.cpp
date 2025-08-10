@@ -62,12 +62,7 @@ void get_curr_version() {
     cout<<"Current version: "<<curr_version<<endl;
 }
 
-void get_version(int sock) {
-    if(curr_version==avlb_version){
-        cout<<"You are using the latest version."<<endl;
-        return;
-    }
-    
+void get_server_version(int sock) {
     send_command(sock, "check");
     char buffer[BUFFER_SIZE];
     recv(sock, buffer, BUFFER_SIZE, 0);
@@ -104,7 +99,7 @@ int main(int argc, char *argv[]){
         exit(EXIT_FAILURE);
     }
 
-    cout << "Connected to FTP server at " << SERVER_IP << ":" << PORT << endl;
+    cout << "Connected to server at " << SERVER_IP << ":" << PORT << endl;
     get_curr_version();
 
     while (true){
@@ -113,7 +108,7 @@ int main(int argc, char *argv[]){
             continue;
 
         else if (command == "1"){
-            get_version(sock);
+            get_server_version(sock);
         }
         else if (command == "2"){
             handle_get(sock, avlb_version);
@@ -147,6 +142,11 @@ void send_command(int sock, string command){
 // Modified handle_get function
 void handle_get(int sock, string filename) {
     string command = "get " + filename;
+
+    if(curr_version==avlb_version){
+        cout<<"You are using the latest version."<<endl;
+        return;
+    }
     send(sock, command.c_str(), command.size(), 0);
 
     // Read exactly 2 bytes to check for "OK"

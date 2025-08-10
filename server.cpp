@@ -191,7 +191,8 @@ void *handle_client(void *client_socket){
         if (command == "check"){
             cout<<"[INFO] Client requested current server version."<<endl;
             get_srvr_ver();
-            send(sock,server_ver.c_str(),server_ver.size(), 0);
+            send(sock,server_ver.c_str(),server_ver.size(),0);
+            cout<<"add"<<endl;
         }
 
         else if (command.substr(0, 3) == "get") {
@@ -229,7 +230,7 @@ void *handle_client(void *client_socket){
         }        
         
         else if (command == "close"){
-            cout <<LBLUE<<"Client disconnected.\n";
+            cout <<LBLUE<<"Client disconnected.\n"<<RESET;
             send(sock, "Closing connection...\n\n", 23, 0);
             close(sock);
             pthread_exit(NULL);

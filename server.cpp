@@ -143,7 +143,7 @@ int main(int argc, char* argv[]){
         cout<<"Error in getting IP"<<endl;
         return 0;
     }
-    cout << "Server started at " << myip<<":"<<port << " ...\n"<<endl;
+    cout << "Server started at " << myip<<":"<<port << " ..."<<endl;
 
     while (true){
         client_socket = accept(server_fd, (struct sockaddr *)&client_addr, &addr_len);
@@ -168,7 +168,7 @@ void *handle_client(void *client_socket){
     int sock = *(int *)client_socket;
     char buffer[BUFFER_SIZE];
     string client_directory = ".";
-    cout<<LGREEN<<"Clients connected"<<RESET<<endl<<endl;
+    cout<<endl<<LGREEN<<"Clients connected"<<RESET<<endl<<endl;
 
     while (true){
         char actualpath[PATH_MAX];

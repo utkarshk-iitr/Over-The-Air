@@ -32,10 +32,17 @@ def handle_client(client_socket, address):
             elif message.startswith("download:"):
                 version = message.split(":")[1]
                 print(f"[INFO] Client requested download for version {version}")
-                exe = open(f"update_{version}.exe","rb").read()
-                client_socket.sendall(exe)
-                client_socket.shutdown(socket.SHUT_WR)
-                print("[INFO] File sent successfully")
+                try:
+                    with open(f"update_{version}.exe", "rb") as f:
+                        exe = f.read()
+                    client_socket.sendall(exe)
+                    client_socket.shutdown(socket.SHUT_WR)
+                    print("[INFO] File sent successfully")
+                    break  # Exit the loop after sending file
+                except FileNotFoundError:
+                    error_msg = f"File update_{version}.exe not found"
+                    print(f"[ERROR] {error_msg}")
+                    client_socket.send(error_msg.encode('utf-8'))
 
     except Exception as e:
         print(f"[ERROR] Error handling client {address}: {e}")
@@ -54,14 +61,17 @@ def start_server():
         except ValueError:
             print("Please enter a valid port number")
     
-    host = get_local_ip()
+    # Use '0.0.0.0' to listen on all interfaces for cross-computer connectivity
+    host = '0.0.0.0'
+    local_ip = get_local_ip()
     server_socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
     
     try:
         server_socket.bind((host, port))
         server_socket.listen(10)
-        print(f"\nServer started on {host}:{port}")
+        print(f"\nServer started on all interfaces ({local_ip}):{port}")
+        print("Clients can connect using this IP address")
         print("Press Ctrl+C to stop the server")
         
         while True:

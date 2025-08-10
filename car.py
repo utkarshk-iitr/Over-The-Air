@@ -1,6 +1,9 @@
 import socket
 import threading
 
+import socket
+import threading
+
 curr_version = "1.0.0"
 avlb_version = "1.0.0"
 
@@ -22,14 +25,15 @@ def install_update():
     """Simulate installing the update."""
 
 def receive_messages(client_socket):
-    while True:
-        try:
-            message = client_socket.recv(1024).decode('utf-8')
-            if message: return message
-            else: return None
-        except Exception as e:
-            print(f"[ERROR] Error receiving message: {e}")
+    try:
+        message = client_socket.recv(1024).decode('utf-8')
+        if message: 
+            return message
+        else: 
             return None
+    except Exception as e:
+        print(f"[ERROR] Error receiving message: {e}")
+        return None
 
 def check_for_update(client_socket):
     global avlb_version
@@ -41,12 +45,13 @@ def check_for_update(client_socket):
 def get_exe(client_socket):
     msg = "download:"+avlb_version
     client_socket.send(msg.encode('utf-8'))
-    print("\n[INFO] Recieving from server...")
+    print("\n[INFO] Receiving from server...")
 
     with open(f"car_update_{avlb_version}.exe","wb") as f:
         while True:
             chunk = client_socket.recv(4096)
-            if not chunk: break
+            if not chunk: 
+                break
             f.write(chunk)
 
     print("File downloaded successfully")
@@ -62,18 +67,20 @@ def start_client():
             print("Please enter a valid port number")
     
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client_socket.settimeout(30)  # Set 30 second timeout
     
     try:
         print(f"\nConnecting to {server_ip}:{server_port}...")
         client_socket.connect((server_ip, server_port))
         print(f"Connected successfully!")
         
-        receive_thread = threading.Thread(target=receive_messages, args=(client_socket,))
-        receive_thread.daemon = True
-        receive_thread.start()
+        # Remove the problematic background thread
+        # receive_thread = threading.Thread(target=receive_messages, args=(client_socket,))
+        # receive_thread.daemon = True
+        # receive_thread.start()
 
         get_curr_ver()
-        
+
         while True:
             choice = menu()
             if choice == '1':
@@ -84,6 +91,7 @@ def start_client():
                     print("You are already on the latest version.")
                 else:
                     get_exe(client_socket)
+                    break  # Close connection after file download
             elif choice == '3':
                 print("Installing updates...")
                 install_update()
@@ -96,6 +104,9 @@ def start_client():
         
     except ConnectionRefusedError:
         print(f"[ERROR] Could not connect to {server_ip}:{server_port}")
+        print("Make sure the server is running and the IP/port are correct")
+    except socket.timeout:
+        print("[ERROR] Connection timed out")
     except Exception as e:
         print(f"[ERROR] Client error: {e}")
     finally:

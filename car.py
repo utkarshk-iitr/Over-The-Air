@@ -1,9 +1,6 @@
 import socket
 import threading
 
-import socket
-import threading
-
 curr_version = "1.0.0"
 avlb_version = "1.0.0"
 

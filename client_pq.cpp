@@ -20,6 +20,7 @@ static void send_all(int fd, const unsigned char *buf, size_t len) {
         sent += n;
     }
 }
+
 static void recv_all(int fd, unsigned char *buf, size_t len) {
     size_t recvd = 0;
     while (recvd < len) {

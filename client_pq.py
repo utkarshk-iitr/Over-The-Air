@@ -72,6 +72,10 @@ class PQClient:
             print(f"Available version: {self.available_version}")
     
     def download_updates(self):
+        if(self.current_version==self.available_version):
+            print("No updates available")
+            return
+        
         command = f"get {self.available_version}"
         SecureFrame.send_encrypted_frame(self.sock,self.aes_key,command.encode())
         
@@ -101,6 +105,7 @@ class PQClient:
     
     def install_updates(self):
         print("[client] Installing update...")
+        self.current_version = self.available_version
     
     def send_command(self,command):
         SecureFrame.send_encrypted_frame(self.sock,self.aes_key,command.encode())

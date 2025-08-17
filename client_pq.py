@@ -7,6 +7,139 @@ Connects to PQ server for secure communication
 import socket
 import sys
 from pqcrypto import *
+from pyexcel import pe
+from time import time
+from merkle import *
+import random,string
+
+
+def zkp_prover(veh_conn):
+    prime_field = 17            # w= 7 (generator), F_p field
+    w = 7
+    N = 16
+    ID_size = 7
+    reg_sheet1 = pe.get_sheet (file_name= "FRI_TA_Reg.xlsx")
+    auth_sheet1 = pe.get_sheet (file_name= "FRI_RSU1_Auth.xlsx")
+
+    fetch_reg_details = 0
+    veh_conn.send(b"VID") #######################vIMP CHECK IT
+    Auth_Req_VPR_T1 =  veh_conn.recv (1024).decode('utf')
+    Auth_Req_VPR_T1 = [i for i in Auth_Req_VPR_T1.split('&')]
+
+    print ("Recvd from Veh : ", Auth_Req_VPR_T1)
+    Auth_Req = Auth_Req_VPR_T1[0]
+    VPR_star = Auth_Req_VPR_T1[1]
+    T1 = float(Auth_Req_VPR_T1[2])
+
+    start_latency = time.time ()
+    start1_comp_time = time.time ()
+
+    if Auth_Req == "A1" and get_timestamp() - T1 < 4 :
+        # Fetch details from TA or Neighbour RSU1 sheet
+
+        for row in reg_sheet1 : # [ VID, VPR, alpha, R_reg, MR_fx, MR_fstar ]
+            if row[1] == VPR_star :
+                VPR = row[1]
+                alpha = row[2]
+                MR_fx = row[4]
+                MR_fstar = row[5]
+                fetch_reg_details = 1 
+                print ("  VPR : ", VPR, "match found ...")
+                break
+
+        if fetch_reg_details == 1 :
+            print ("Reg details found in Excel ...")
+
+            i_val = random.randint(0,N//2-1)
+            ti = random.randint(0, 1)
+            T2 = get_timestamp ()
+            R_auth = random.randint(100, 100000)
+                
+            ti_R_auth_i_val_T2 = str(ti)+ "&"+ str(R_auth) + "&"+ str(i_val) + "&"+ str(T2)
+            end1_comp_time = time.time ()
+
+            auth_comp_time = end1_comp_time - start1_comp_time
+
+            veh_conn.send (ti_R_auth_i_val_T2.encode('utf')) 
+            proof_pi_R_auth_T3 = veh_conn.recv (1024).decode('utf') # Recv ( ABC_proof )
+
+            proof_pi_R_auth_T3 = [i for i in proof_pi_R_auth_T3.split('&')]
+            print ("Proof Received from Vehicle \nVerifying Proof ....") #is ", ABC_authpath_rA)
+
+            start2_comp_time = time.time ()
+            ABC = proof_pi_R_auth_T3[0] # Ay, By, Cy values
+            Authpath_ti = eval(proof_pi_R_auth_T3[1])
+            R_auth_star = int(proof_pi_R_auth_T3[2])
+            T3 = proof_pi_R_auth_T3[3]
+
+            if get_timestamp () - float(T3) < 4 and R_auth_star == R_auth :
+
+                if ti == 0 :
+                    #print ("\nVer merkle path for f(w^i) ")
+                    merkle_ver_status = Ver_merkle_path (Authpath_ti, MR_fx )
+                elif ti == 1 :
+                    #print ("\nVer merkle path for fstar(w^2i) ")
+                    merkle_ver_status = Ver_merkle_path (Authpath_ti, MR_fstar )
+
+                if merkle_ver_status == 1 :
+                    print ("---------Merkle  path Verified SUCCESSFUL ---------")
+
+                    ABC_proof_list = [int(i) for i in ABC.split(',')]
+
+                    x_values = [ (w**i_val) % prime_field, (w**(N//2+ i_val)) % prime_field] #, alpha 
+                    y_values = [ ABC_proof_list[0] , ABC_proof_list[1] ] # , ABC_proof_list[2]
+
+                    # print ("A : (", x_values[0], ",", y_values[0], ")")
+                    # print ("B : (", x_values[1], ",", y_values[1], ")")
+
+                    w_minus_i_mod_p = pow(w, -i_val, prime_field)
+                    inv_2_mod_p = pow(2, -1, prime_field)
+
+                    term1 = 1 + alpha * w_minus_i_mod_p 
+                    term2 = 1 - alpha * w_minus_i_mod_p
+
+                    y3_for_alpha = ((term1 *  y_values[0] + term2 * y_values[1] ) * inv_2_mod_p) % prime_field
+                    # print ("\nComputed C : (", alpha, ",", y3_for_alpha, ")")
+
+                    if y3_for_alpha == ABC_proof_list[2]:
+                        print ("---- Lagrange interpolation Ver SUCCESSFUL-----------")
+
+                        VIDnew  = ''.join(random.SystemRandom().choice(string.ascii_uppercase + string.digits) for _ in range(ID_size))
+                        S_auth = random.randint(100, 10000)
+
+                        end2_comp_time = time.time () 
+                        auth_comp_time += end2_comp_time - start2_comp_time
+
+                        VIDnew_Hand_status_S_auth = VIDnew + "&"+ "S" + "&"+ str(S_auth)
+
+                        veh_conn.send (VIDnew_Hand_status_S_auth.encode('utf'))
+                        VIDnew_VPR_Hand = VIDnew + "&"+ str(S_auth) + "&"+ MR_fx + "&"+ MR_fstar + "&"+ str(alpha)
+                        # RSU2_conn.send (VIDnew_VPR_Hand.encode('utf')) 
+
+                        end_latency = time.time ()
+                        total_latency = end_latency - start_latency
+                        print ("******Initial Authentication SUCCESS *****")
+                        auth_sheet1.row += [ VIDnew, S_auth, auth_comp_time, total_latency ]
+                        auth_sheet1.save_as ("FRI_RSU1_Auth.xlsx")
+
+                        print ("RSU Auth comp time is ", auth_comp_time)
+                        print ("Total latency is ", total_latency,"\n\n*******************************")
+                                
+                    else :
+                        Auth_status = "F"
+                        veh_conn.send (Auth_status.encode('utf')) 
+                        print ("Lagrange interpolation Failed")
+                else :
+                    print ("Merkle Auth failed ")
+            else :
+                print ("T3 timestamp check failed")
+        else :
+            print ("Unable to fetch Reg details ")
+    else :
+        print ("T1 timestamp check failed")
+
+    veh_conn.close ()
+
 
 class PQClient:
     def __init__(self,host,port):

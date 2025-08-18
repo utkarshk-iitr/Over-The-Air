@@ -24,16 +24,15 @@ def zkp_verifier(client_sock,key):
     N = 16
     reg_sheet1 = pe.get_sheet (file_name= "FRI_Veh_Reg.xlsx")
     auth_sheet1 = pe.get_sheet (file_name= "FRI_Veh_Auth.xlsx")
-    VID = SecureFrame.recv_encrypted_frame(client_sock,key)
-    print ("VID : ", VID)
+    VID = SecureFrame.recv_encrypted_frame(client_sock,key).decode()
+    reg_flag = 0
 
-    for row in reg_sheet1 : # [ fx_list, VID, VPR, RSU_comp_time, MR_fx, MR_fstar, f_w_i, f_star_w_2i ]
+    for row in reg_sheet1 :
         if row[1] == VID :
             VPR = row[2]
             f_w_i = [int(i) for i in row[3].split(',')]
             f_star_w_2i = [int(i) for i in row[4].split(',')]
-            reg_flag = 1 
-            print ("  VID : ", VID, "match found ...")
+            reg_flag = 1
             break
 
     if reg_flag == 1 : 
@@ -42,17 +41,8 @@ def zkp_verifier(client_sock,key):
 
         T1 = str(get_timestamp ())
         Auth_Req_VPR_T1 = "A1" + "&"+ VPR +"&"+ T1
-
-        len_Auth_Req_VPR_T1 = len(Auth_Req_VPR_T1)
-
-        print ("Send Len of  Auth_Req_VPR_T1 : ", len_Auth_Req_VPR_T1 )
-        print ("Sedning to RSU1 : ", Auth_Req_VPR_T1)
-        
-        client_sock.send (Auth_Req_VPR_T1.encode('utf')) 
-        ti_R_auth_i_val_T2 = client_sock.recv(1024).decode()  # receive (alpha) from Veh
-
-        len_ti_R_auth_i_val_T2 = len (ti_R_auth_i_val_T2)
-        print ("Recv Len of len_R_reg_alpha_T2 : ", len_ti_R_auth_i_val_T2)
+        SecureFrame.send_encrypted_frame(client_sock,key,Auth_Req_VPR_T1.encode())
+        ti_R_auth_i_val_T2 = SecureFrame.recv_encrypted_frame(client_sock,key).decode()
 
         start1_comp_time = time.time ()
         ti_R_auth_i_val_T2 = [i for i in ti_R_auth_i_val_T2.split('&')]
@@ -63,9 +53,6 @@ def zkp_verifier(client_sock,key):
         T2 = float (ti_R_auth_i_val_T2[3])
 
         if get_timestamp () - T2 < 4 :
-
-            print ("Received Challenge \nti = ", ti, "\ni_val = ", i_val)
- 
             get_f_w_i_val = f_w_i[i_val]
             get_f_w_N2_i = f_w_i[int(N//2) + i_val]
             get_f_star_w_2i = f_star_w_2i[i_val]
@@ -87,17 +74,9 @@ def zkp_verifier(client_sock,key):
 
             end1_comp_time = time.time ()
             comp_time = end1_comp_time - start1_comp_time
-
-            len_proof_pi_R_auth_T3 = len(proof_pi_R_auth_T3)
-
-            print ("Send Len of  proof_pi_R_auth_T3 : ", len_proof_pi_R_auth_T3 )
-
-            client_sock.send (proof_pi_R_auth_T3.encode('utf')) 
-            VIDnew_Auth_status_S_auth = client_sock.recv(1024).decode()  # Auth status from RSU1
-
-            len_VIDnew_Auth_status_S_auth = len (VIDnew_Auth_status_S_auth)
-            print ("Recv Len of len_R_reg_alpha_T2 : ", len_VIDnew_Auth_status_S_auth)
-
+            SecureFrame.send_encrypted_frame(client_sock,key,proof_pi_R_auth_T3.encode())
+            VIDnew_Auth_status_S_auth = SecureFrame.recv_encrypted_frame(client_sock,key).decode()  # Auth status from RSU1
+            
             VIDnew_Auth_status_S_auth = [i for i in VIDnew_Auth_status_S_auth.split('&')]
             VIDnew = VIDnew_Auth_status_S_auth[0]
             S_auth = VIDnew_Auth_status_S_auth[2]
@@ -187,8 +166,11 @@ class PQServer:
     
     def handle_file_download(self,client_sock,key,version):
         if zkp_verifier(client_sock,key)!='S':
-            print("Zero-Knowledge Proof failed")
+            print("[server] Zero-Knowledge Proof failed")
+            SecureFrame.send_encrypted_frame(client_sock,key,b"NO")
             return
+        print("[server] Zero-Knowledge Proof succeeded")
+        SecureFrame.send_encrypted_frame(client_sock,key,b"YES")
         filename = f"update_{version}.exe"
         
         try:

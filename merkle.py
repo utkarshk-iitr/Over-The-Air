@@ -1,178 +1,200 @@
 import hashlib
 import datetime
 
-class Node:
-    def __init__(self, left, right, value, content, is_copied = False):
-        self.left: Node = left
-        self.right: Node = right
+class Node: 
+    def __init__(self, left, right, value, content, is_copied=False):
+        self.left = left
+        self.right = right
         self.value = value
         self.content = content
         self.is_copied = is_copied
-
-    def hash(val):
-        return hashlib.sha256(val.encode("utf-8")).hexdigest()
-
+         
+    @staticmethod
+    def hash(val) -> str:
+        return hashlib.sha256(val.encode('utf-8')).hexdigest()
+ 
     def __str__(self):
-        return str(self.value)
-
+        return (str(self.value))
+ 
     def copy(self):
+        """
+        class copy function
+        """
         return Node(self.left, self.right, self.value, self.content, True)
-
-
+       
 class MerkleTree:
     def __init__(self, values):
         self.__buildTree(values)
-
+ 
     def __buildTree(self, values):
+ 
         leaves = [Node(None, None, Node.hash(str(e)), str(e)) for e in values]
         if len(leaves) % 2 == 1:
-            leaves.append(leaves[-1].copy())
-        self.root: Node = self.__buildTreeRec(leaves)
-
+            leaves.append(leaves[-1].copy())  # duplicate last elem if odd number of elements
+        self.root = self.__buildTreeRec(leaves)
+ 
     def __buildTreeRec(self, nodes) -> Node:
         if len(nodes) % 2 == 1:
-            nodes.append(nodes[-1].copy())
+            nodes.append(nodes[-1].copy())  # duplicate last elem if odd number of elements
         half = len(nodes) // 2
-
+ 
         if len(nodes) == 2:
-            return Node(nodes[0], nodes[1],
-                        Node.hash(nodes[0].value + nodes[1].value),
-                        nodes[0].content + "+" + nodes[1].content)
-
-        left: Node = self.__buildTreeRec(nodes[:half])
-        right: Node = self.__buildTreeRec(nodes[half:])
+            return Node(nodes[0], nodes[1], Node.hash(nodes[0].value + nodes[1].value), nodes[0].content+"+"+nodes[1].content)
+ 
+        left = self.__buildTreeRec(nodes[:half])
+        right = self.__buildTreeRec(nodes[half:])
         value = Node.hash(left.value + right.value)
-        content = f"{left.content}+{right.content}"
+        content = f'{left.content}+{right.content}'
         return Node(left, right, value, content)
-
+ 
     def printTree(self):
         self.__printTreeRec(self.root)
-
-    def __printTreeRec(self, node: Node):
-        if node is not None:
-            if node.left is not None:
-                print("Left: " + str(node.left))
-                print("Right: " + str(node.right))
+         
+    def __printTreeRec(self, node):
+        if node != None:
+            if node.left != None:
+                print("Left: "+str(node.left))
+                print("Right: "+str(node.right))
             else:
                 print("Input")
+                 
             if node.is_copied:
-                print("(Padding)")
-            print("Value: " + str(node.value))
-            print("Content: " + str(node.content))
+                print('(Padding)')
+            print("Value: "+str(node.value))
+            print("Content: "+str(node.content))
             print("")
             self.__printTreeRec(node.left)
             self.__printTreeRec(node.right)
-
-    def getRootHash(self):
+ 
+    def getRootHash(self) -> str: 
         return self.root.value
-
-    def getAuthenticationPath(self, leaf_index):
-        leaves = []
-
-        def collect_leaves(node: Node):
-            if node.left is None and node.right is None:
-                leaves.append(node)
-            else:
-                collect_leaves(node.left)
-                collect_leaves(node.right)
-
-        collect_leaves(self.root)
-        if leaf_index < 0 or leaf_index >= len(leaves):
-            raise IndexError("leaf_index out of range for authentication path")
-
+    '''
+    def inorderTraversal(self, node):
+        if node:
+            self.inorderTraversal(node.left)
+            print(node.value)
+            self.inorderTraversal(node.right)
+    '''
+    def getAuthenticationPath(self, value, i_val):
         path = {}
-        def find_and_collect(node: Node, depth, target_node: Node):
+        
+        def findNode(node, depth, leaf_index):
+            nonlocal i_val
             if node is None:
                 return False
-            if node is target_node:
-                return True
-            if node.left and find_and_collect(node.left, depth + 1, target_node):
-                # sibling is on the right
-                path[f"{depth}r"] = node.right.value
-                return True
-            if node.right and find_and_collect(node.right, depth + 1, target_node):
-                # sibling is on the left
-                path[f"{depth}l"] = node.left.value
-                return True
-            return False
+            
+            if node.left is None and node.right is None:
+                # Check if this is the leaf node and matches the value we're looking for
+                if leaf_index == i_val:
+                    #print("\nFound leaf node with value:", value)
+                    if i_val % 2 == 0:
+                        #print("\n1 l depth : ", depth, "& Node : ", node.value)
+                        path[str(depth)+"l"] = node.value
+                    else:
+                        #print("\n1 r depth : ", depth, "& Node : ", node.value)
+                        path[str(depth)+"r"] = node.value
+                    return True
+                else:
+                    return False
+                
+            else:
+                if node.left and findNode(node.left, depth + 1, leaf_index * 2):
+                    #print("2 r depth : ", depth, "& Node : ", node.right.value)
+                    path[str(depth)+"r"] = node.right.value
+                    return True
+                elif node.right and findNode(node.right, depth + 1, leaf_index * 2 + 1):
+                    path[str(depth)+"l"] = node.left.value
+                    #print("2 l depth : ", depth, "& Node : ", node.left.value)
+                    return True
+                return False 
 
-        target_leaf = leaves[leaf_index]
-        # start depth at 0 for leaf level (consistent with previous code style)
-        find_and_collect(self.root, 0, target_leaf)
-        path[f"{len(path)}z"] = self.root.value
+        findNode(self.root, 0, 0)
+        path[str(len(path))+ "z"] = self.root.value  # Add the root hash at the end of the path with the maximum depth
+        #print("\n3 depth : ", len(path), "& Node : ", self.root.value,"\n")
+
         return path
-
-
-def mixmerkletree(values):
-    mtree = MerkleTree(values)
-    print("Root Hash: " + mtree.getRootHash() + "\n")
+    
+    def getAncestorslist(self, value):
+        path = []
+        def findNode(node, value):
+            if node is None:
+                return False
+            elif node.value == value:
+                # path.append(node.value)
+                return True
+            else:
+                if node.left and findNode(node.left, value):
+                    path.append(node.left.value)
+                    return True
+                elif node.right and findNode(node.right, value):
+                    path.append(node.right.value)
+                    return True
+                return False
+        findNode(self.root, value)
+        path.append(self.root.value)
+        return path
+    
+def mixmerkletree(f_w_i):
+    #print("Inputs: ")
+    #print(*f_w_i, sep=" | ")
+    #print("")
+    mtree = MerkleTree(f_w_i)
+    print("Root Hash: "+ mtree.getRootHash()+"\n")
+    #mtree.printTree()
+    #print("\nInorder Traversal:\n")
+    #mtree.inorderTraversal(mtree.root)
     return mtree.getRootHash(), mtree
 
-
 def Ver_merkle_path(auth_path, root_hash):
-    entries = [(int(k[:-1]), k[-1], v) for k, v in auth_path.items() if not k.endswith("z")]
-    # sort by depth ascending to follow bottom-to-top order
-    entries.sort(key=lambda x: x[0])
+    skip_count = 0
 
-    prev_hash = None
-    i = 0
-    while i < len(entries):
-        depth = entries[i][0]
-        # collect all entries with this depth
-        same_depth = []
-        while i < len(entries) and entries[i][0] == depth:
-            same_depth.append(entries[i])
-            i += 1
+    for key, value in auth_path.items():
+        #print(f"Key: {key}, Value: {value}")
 
-        # if no previous hash (we're at leaf level)
-        if prev_hash is None:
-            if len(same_depth) == 2:
-                # expect one 'l' and one 'r'
-                left = next((h for (d, lr, h) in same_depth if lr == "l"), None)
-                right = next((h for (d, lr, h) in same_depth if lr == "r"), None)
-                if left is None or right is None:
-                    # malformed path
-                    return False
-                prev_hash = hashlib.sha256(left.encode("utf-8") + right.encode("utf-8")).hexdigest()
-            elif len(same_depth) == 1:
-                # only one sibling present at leaf level: treat sibling as left or right
-                lr = same_depth[0][1]
-                sibling_hash = same_depth[0][2]
-                # Without explicit leaf value we cannot compute; return False (malformed)
-                return False
-            else:
-                return False
+        if skip_count >= 3:
+            #print ("Into If part ****")
+            
+            if key[1] == "l" :
+                prev_hash = hashlib.sha256(auth_path[key].encode('utf-8') + prev_hash.encode('utf-8')).hexdigest()
+                #print ("11 Prev hash is ", prev_hash)
+
+            elif key[1] == "r" :
+                prev_hash = hashlib.sha256(prev_hash.encode('utf-8') + auth_path[key].encode('utf-8')).hexdigest()
+                #print ("22 Prev hash is ", prev_hash)
+
         else:
-            # combine the prev_hash with the single sibling at this depth
-            if len(same_depth) != 1:
-                # unexpected: after bottom level we should have exactly one sibling per level
-                # if there are two, try to reduce them first (unlikely with this generator)
-                left = next((h for (d, lr, h) in same_depth if lr == "l"), None)
-                right = next((h for (d, lr, h) in same_depth if lr == "r"), None)
-                if left and right:
-                    combined = hashlib.sha256(left.encode("utf-8").encode("utf-8") if False else b'').hexdigest()  # unreachable; kept safe
-                return False
-            lr = same_depth[0][1]
-            sibling_hash = same_depth[0][2]
-            if lr == "l":
-                prev_hash = hashlib.sha256(sibling_hash.encode("utf-8") + prev_hash.encode("utf-8")).hexdigest()
-            else:
-                prev_hash = hashlib.sha256(prev_hash.encode("utf-8") + sibling_hash.encode("utf-8")).hexdigest()
+            #print ("Into else ---")
+            if key[1] == "l" :
+                value1 = auth_path[key]
+            elif key[1] == "r" :
+                value2 = auth_path[key]
 
-    # final check
-    if prev_hash is None:
-        return False
-    return prev_hash == root_hash
+            skip_count += 1
 
+            if skip_count == 2 :
+                prev_hash = hashlib.sha256(value1.encode('utf-8') + value2.encode('utf-8')).hexdigest()
+                #print ("33 Prev hash is ", prev_hash)
+                skip_count += 1
+
+    if prev_hash == root_hash :
+        return 1
+    else :
+        return 0
 
 def printPoly(poly, n):
+    # Initialize an empty string to store the polynomial
     polynomial_str = ""
+
     for i in range(n):
+        # Append the coefficient and x term to the string
         if poly[i] != 0:
             polynomial_str += str(poly[i]) + "x^" + str(i) + " + "
-    polynomial_str = polynomial_str[:-3] if polynomial_str else ""
-    print(polynomial_str)
 
+    # Remove the trailing " + " from the end of the string
+    polynomial_str = polynomial_str[:-3]
+
+    # Print the entire polynomial in a single line
+    print(polynomial_str)
 
 def evaluate_polynomial(coefficients, x):
     result = 0
@@ -180,12 +202,18 @@ def evaluate_polynomial(coefficients, x):
         result += coef * (x ** (len(coefficients) - 1 - i))
     return result
 
+def listToString(s): 
+    # initialize an empty string
+    str1 = ""
+ 
+    # traverse in the string
+    for ele in s:
+        str1 += str(ele)
+        str1 += ","
+    str1 = str1[:len(str1)-1]
+    return str1
 
-def listToString(s):
-    if not s:
-        return ""
-    return ",".join(str(ele) for ele in s)
-
-
-def get_timestamp() -> float:
-    return datetime.datetime.now().timestamp()
+def get_timestamp() :
+    ct = datetime.datetime.now()
+    ts = ct.timestamp()
+    return ts

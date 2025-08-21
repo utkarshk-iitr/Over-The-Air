@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 import random
 import time
 import string
@@ -6,24 +7,19 @@ import os
 import csv
 from merkle import *
 
-try:
-    import pyexcel as pe
-    PYEXCEL_AVAILABLE = True
-except Exception:
-    PYEXCEL_AVAILABLE = False
-
 class TrustedAuthority:
-    def __init__(self, save_path_ta="FRI_TA_Reg.xlsx"):
+    def __init__(self, save_path_ta="FRI_TA_Reg.csv"):
         self.regs = []
         self.save_path_ta = save_path_ta
-        if PYEXCEL_AVAILABLE:
-            try:
-                _ = pe.get_sheet(file_name=self.save_path_ta)
-            except Exception:
-                s = pe.Sheet()
-                s.name_columns_by_row(0)
-                s.row += ["VID", "VPR", "alpha", "R_reg", "MR_fx", "MR_fstar", "TA_comp_time", "reg_latency"]
-                s.save_as(self.save_path_ta)
+        try:
+            with open(self.save_path_ta, "r") as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    self.regs.append(row)
+        except Exception:
+            with open(self.save_path_ta, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["VID", "VPR", "alpha", "R_reg", "MR_fx", "MR_fstar", "TA_comp_time", "reg_latency"])
 
     def process_initial(self, vid_rpr_mrfx_t1: str) -> str:
         start = time.time()
@@ -38,9 +34,7 @@ class TrustedAuthority:
         R_reg = random.randint(100, 100000)
         T2 = get_timestamp()
         self._pending = {"VID": VID, "VPR": VPR, "MR_fx": MR_fx, "alpha": alpha, "R_reg": R_reg, "T1": T1, "T2": T2}
-        TA_comp_time = time.time() - start
         response = f"{alpha}&{R_reg}&{T2}"
-        print(f"TA -> sent alpha & R_reg & T2 : {response}")
         return response
 
     def verify_registration(self, r_reg_mr_fstar_t3: str) -> str:
@@ -55,50 +49,34 @@ class TrustedAuthority:
         if pending is None:
             print("TA: no pending registration")
             return "F"
-        # check
+        
         if get_timestamp() - T3 < 4 and pending["R_reg"] == R_reg_star:
             TA_comp_time = time.time() - start
             reg_latency = T3 - pending["T1"] if T3 > pending["T1"] else 0.0
             row = [pending["VID"], pending["VPR"], pending["alpha"], pending["R_reg"], pending["MR_fx"], MR_fstar, TA_comp_time, reg_latency]
             self.regs.append(row)
-            if PYEXCEL_AVAILABLE:
-                try:
-                    sheet = pe.get_sheet(file_name=self.save_path_ta)
-                    sheet.row += row
-                    sheet.save_as(self.save_path_ta)
-                except Exception:
-                    self._save_csv("FRI_TA_Reg.csv", row)
-            else:
-                self._save_csv("FRI_TA_Reg.csv", row)
-            print("TA: Reg Done SUCCESS")
+            _save_csv("FRI_TA_Reg.csv", row)
             return "S"
         else:
-            print("TA: Reg failed (timestamp or R_reg mismatch)")
             return "F"
 
-    def _save_csv(fname, row):
-        header_needed = not os.path.exists(fname)
-        with open(fname, "a", newline="") as f:
-            writer = csv.writer(f)
-            if header_needed:
-                writer.writerow(["VID", "VPR", "alpha", "R_reg", "MR_fx", "MR_fstar", "TA_comp_time", "reg_latency"])
-            writer.writerow(row)
 
-
-def run_manufacturer(ta: TrustedAuthority, save_path_veh="FRI_Veh_Reg.xlsx"):
+def run_manufacturer(ta, save_path_veh="FRI_Veh_Reg.csv"):
     prime_field = 17
     w_i = [1, 7, 15, 3, 4, 11, 9, 12, 16, 10, 2, 14, 13, 6, 8, 5]
     w_2i = [1, 15, 4, 9, 16, 2, 13, 8]
     ID_size = 7
 
-    if PYEXCEL_AVAILABLE:
-        try:
-            _ = pe.get_sheet(file_name=save_path_veh)
-        except Exception:
-            s = pe.Sheet()
-            s.name_columns_by_row(0)
-            s.row += ["f_coeffs", "VID", "VPR", "f_w_i", "f_star_w_2i", "veh_comp_time11", "veh_comp_time"]
-            s.save_as(save_path_veh)
+    try:
+        regs = []
+        with open(save_path_veh, "r") as f:
+            reader = csv.reader(f)
+            for row in reader:
+                regs.append(row)
+    except Exception:
+        with open(save_path_veh, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["f_coeffs", "VID", "VPR", "f_w_i", "f_star_w_2i", "veh_comp_time11", "veh_comp_time"])
 
     start1 = time.time()
     VID = "".join(random.SystemRandom().choice(string.ascii_uppercase + string.digits) for _ in range(ID_size))
@@ -109,7 +87,6 @@ def run_manufacturer(ta: TrustedAuthority, save_path_veh="FRI_Veh_Reg.xlsx"):
     r = random.randint(100, 100000)
     VPR = hashlib.sha256(VID.encode("utf-8") + PIN.encode("utf-8") + str(r).encode("utf-8")).hexdigest()
 
-    # polynomial
     fx_list = []
     f_deg = random.randint(6, 12)
     for _ in range(0, f_deg + 1):
@@ -119,7 +96,6 @@ def run_manufacturer(ta: TrustedAuthority, save_path_veh="FRI_Veh_Reg.xlsx"):
     f_w_i = [evaluate_polynomial(fx_list, each) % prime_field for each in w_i]
     MR_fx, _ = mixmerkletree([str(x) for x in f_w_i])
 
-    # split into fe and fo similarly to original (kept same logic)
     fo_list = []
     fe_list = []
     deg = len(fx_list)
@@ -152,9 +128,7 @@ def run_manufacturer(ta: TrustedAuthority, save_path_veh="FRI_Veh_Reg.xlsx"):
     T1 = str(get_timestamp())
     VID_RPR_MRfx_T1 = VID + "&" + VPR + "&" + MR_fx + "&" + T1
     veh_comp_time = time.time() - start1
-    print("Send Len of VID_RPR_MRfx_T1 :", len(VID_RPR_MRfx_T1))
 
-    # call TA
     ta_response = ta.process_initial(VID_RPR_MRfx_T1)
     alpha_str, R_reg_str, T2_str = ta_response.split("&")
     alpha = int(alpha_str)
@@ -169,25 +143,16 @@ def run_manufacturer(ta: TrustedAuthority, save_path_veh="FRI_Veh_Reg.xlsx"):
 
         MR_fstar, _ = mixmerkletree([str(x) for x in f_star_w_2i])
         T3 = get_timestamp()
-        veh_comp_time += (time.time() - start1) - veh_comp_time  # approximate addition of remaining steps (kept simple)
+        veh_comp_time += (time.time() - start1) - veh_comp_time
 
         R_reg_MR_fstar_T3 = str(R_reg) + "&" + MR_fstar + "&" + str(T3)
-        print("Send Len of R_reg_MR_fstar_T3 :", len(R_reg_MR_fstar_T3))
 
         status = ta.verify_registration(R_reg_MR_fstar_T3)
         if status == "S":
             print("Reg Done SUCCESS for Veh")
             row = [listToString(fx_list), VID, VPR, listToString(f_w_i), listToString(f_star_w_2i), veh_comp_time, veh_comp_time]
-            if PYEXCEL_AVAILABLE:
-                try:
-                    sheet = pe.get_sheet(file_name=save_path_veh)
-                    sheet.row += row
-                    sheet.save_as(save_path_veh)
-                except Exception:
-                    _save_csv("FRI_Veh_Reg.csv", row)
-            else:
-                _save_csv("FRI_Veh_Reg.csv", row)
-            print("Veh Comp Time for ZKP Authentication is ", veh_comp_time)
+            _save_csv("FRI_Veh_Reg.csv", row)
+            print("Veh Comp Time for ZKP Authentication is", veh_comp_time)
         else:
             print("Reg failed")
     else:
@@ -203,11 +168,8 @@ def _save_csv(fname, row):
         writer.writerow(row)
 
 def main():
-    print("Starting merged Manufacturer <-> TA simulation (no sockets)...\n")
     ta = TrustedAuthority()
     run_manufacturer(ta)
-    print("\nDone.")
-
 
 if __name__ == "__main__":
     main()

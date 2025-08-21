@@ -9,8 +9,8 @@ import threading
 import sys
 from pqcrypto import *
 from merkle import *
-import pyexcel as pe
 import time
+import csv
 
 def get_ip():
     try:
@@ -22,8 +22,11 @@ def get_ip():
 
 def zkp_verifier(client_sock,key):
     N = 16
-    reg_sheet1 = pe.get_sheet (file_name= "FRI_Veh_Reg.xlsx")
-    auth_sheet1 = pe.get_sheet (file_name= "FRI_Veh_Auth.xlsx")
+    reg_sheet1 = []
+    with open("FRI_Veh_Reg.csv", "r") as f:
+        reader = csv.reader(f)
+        for row in reader:
+            reg_sheet1.append(row)
     VID = SecureFrame.recv_encrypted_frame(client_sock,key).decode()
     reg_flag = 0
 
@@ -42,11 +45,10 @@ def zkp_verifier(client_sock,key):
         T1 = str(get_timestamp ())
         Auth_Req_VPR_T1 = "A1" + "&"+ VPR +"&"+ T1
         SecureFrame.send_encrypted_frame(client_sock,key,Auth_Req_VPR_T1.encode())
+
         ti_R_auth_i_val_T2 = SecureFrame.recv_encrypted_frame(client_sock,key).decode()
-
         start1_comp_time = time.time ()
-        ti_R_auth_i_val_T2 = [i for i in ti_R_auth_i_val_T2.split('&')]
-
+        ti_R_auth_i_val_T2 = ti_R_auth_i_val_T2.split('&')
         ti = ti_R_auth_i_val_T2[0]
         R_auth = ti_R_auth_i_val_T2[1]
         i_val = int(ti_R_auth_i_val_T2[2])
@@ -56,7 +58,6 @@ def zkp_verifier(client_sock,key):
             get_f_w_i_val = f_w_i[i_val]
             get_f_w_N2_i = f_w_i[int(N//2) + i_val]
             get_f_star_w_2i = f_star_w_2i[i_val]
-
             ABC_proof = [get_f_w_i_val, get_f_w_N2_i, get_f_star_w_2i]
             ABC_proof = listToString(ABC_proof)
 
@@ -75,16 +76,16 @@ def zkp_verifier(client_sock,key):
             end1_comp_time = time.time ()
             comp_time = end1_comp_time - start1_comp_time
             SecureFrame.send_encrypted_frame(client_sock,key,proof_pi_R_auth_T3.encode())
-            VIDnew_Auth_status_S_auth = SecureFrame.recv_encrypted_frame(client_sock,key).decode()  # Auth status from RSU1
             
-            VIDnew_Auth_status_S_auth = [i for i in VIDnew_Auth_status_S_auth.split('&')]
+            VIDnew_Auth_status_S_auth = SecureFrame.recv_encrypted_frame(client_sock,key).decode()  # Auth status from RSU1
+            VIDnew_Auth_status_S_auth = VIDnew_Auth_status_S_auth.split('&')
             VIDnew = VIDnew_Auth_status_S_auth[0]
             S_auth = VIDnew_Auth_status_S_auth[2]
 
-            if VIDnew_Auth_status_S_auth[1] == "S" :
-                auth_sheet1.row += [ VID, VIDnew, S_auth, comp_time ]
-                auth_sheet1.save_as ("FRI_Veh_Auth.xlsx")
-                return 'S'
+            # if VIDnew_Auth_status_S_auth[1] == "S" :
+                # auth_sheet1.row += [ VID, VIDnew, S_auth, comp_time ]
+                # auth_sheet1.save_as ("FRI_Veh_Auth.xlsx")
+            return 'S'
         else :
             return 'F'
     else :

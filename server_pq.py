@@ -90,6 +90,7 @@ class PQServer:
         print(f"[server] Client connected: {client_addr}")
         
         try:
+            start = time.time()
             kem_manager = KEMManager(self.kem_alg)
             kyber_pub, kem_manager = kem_manager.generate_keypair()
 
@@ -110,7 +111,7 @@ class PQServer:
             shared_secret = bytearray(shared_secret)
             PQCrypto.secure_clear(shared_secret)
             
-            print("[server] Secure handshake completed\n")
+            print("[server] Secure handshake completed in",time.time()-start,"\n")
             self.command_loop(client_sock,aes_key)
             
         except Exception as e:
@@ -152,13 +153,15 @@ class PQServer:
                 break
     
     def handle_file_download(self,client_sock,key,version):
+        start = time.time()
         if zkp_verifier(client_sock,key)!='S':
             print("[server] Zero-Knowledge Proof failed")
             SecureFrame.send_encrypted_frame(client_sock,key,b"NO")
             return
-        print("[server] Zero-Knowledge Proof succeeded")
+        print("[server] Zero-Knowledge Proof succeeded in",time.time()-start)
         SecureFrame.send_encrypted_frame(client_sock,key,b"YES")
         filename = f"update_{version}.exe"
+        start = time.time()
         
         try:
             with open(filename,'rb') as f:
@@ -170,6 +173,7 @@ class PQServer:
                         SecureFrame.send_encrypted_frame(client_sock,key,b"")
                         break
                     SecureFrame.send_encrypted_frame(client_sock,key,chunk)
+            print("[server] File transfer completed in",time.time()-start)
 
         except FileNotFoundError:
             SecureFrame.send_encrypted_frame(client_sock,key,b"NO")

@@ -104,6 +104,7 @@ class PQClient:
         self.sock = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
         
         try:
+            start = time.time()
             self.sock.connect((self.host, self.port))
             print(f"[client] Connected to {self.host}:{self.port}")
 
@@ -127,7 +128,7 @@ class PQClient:
 
             shared_secret = bytearray(shared_secret)
             PQCrypto.secure_clear(shared_secret)
-            print("[client] Secure handshake completed")
+            print("[client] Secure handshake completed in",time.time()-start)
             return True
             
         except Exception as e:
@@ -162,6 +163,7 @@ class PQClient:
         command = f"get {self.available_version}"
         SecureFrame.send_encrypted_frame(self.sock,self.aes_key,command.encode())
 
+        start = time.time()
         zkp_prover(self.sock,self.aes_key,self.VID)
         res = SecureFrame.recv_encrypted_frame(self.sock,self.aes_key).decode()
 
@@ -169,7 +171,7 @@ class PQClient:
             print("[client] Zero-Knowledge Proof failed")
             return
 
-        print("[client] Zero-Knowledge Proof succeeded")
+        print("[client] Zero-Knowledge Proof succeeded in",time.time()-start)
 
         response = SecureFrame.recv_encrypted_frame(self.sock,self.aes_key)
         if not response or response.decode()!="OK":
@@ -178,7 +180,7 @@ class PQClient:
         
         filename = f"car_update_{self.available_version}.exe"
         print(f"Receiving {filename}...")
-        
+        start = time.time()
         try:
             with open(filename,'wb') as f:
                 while True:
@@ -188,9 +190,9 @@ class PQClient:
                         break
                     if len(chunk)==0: break
                     f.write(chunk)
-            
-            print("File downloaded successfully")
-            
+
+            print("File downloaded successfully in",time.time()-start)
+
         except Exception as e:
             print(f"File download error: {e}")
     

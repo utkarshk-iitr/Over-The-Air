@@ -22,7 +22,7 @@ def zkp_prover(veh_conn,key):
     auth_sheet1 = pe.get_sheet (file_name= "FRI_RSU1_Auth.xlsx")
 
     fetch_reg_details = 0
-    VID = "1NT9CRE"
+    VID = "KAF91EA"
     SecureFrame.send_encrypted_frame(veh_conn,key,VID.encode())
     Auth_Req_VPR_T1 =  SecureFrame.recv_encrypted_frame(veh_conn,key).decode()
     Auth_Req_VPR_T1 = [i for i in Auth_Req_VPR_T1.split('&')]   

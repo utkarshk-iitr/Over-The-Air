@@ -22,7 +22,7 @@ class TrustedAuthority:
             except Exception:
                 s = pe.Sheet()
                 s.name_columns_by_row(0)
-                s.row += ["VID", "VPR", "alpha", "R_reg", "MR_fx", "MR_fstar", "TA_comp_time", "reg_latency"]
+                s.row += ["VID", "VPR", "alpha", "R_reg", "MR_fx", "MR_fstar", "TA_comp_time", "reg_latency","Version"]
                 s.save_as(self.save_path_ta)
 
     def process_initial(self, vid_rpr_mrfx_t1: str) -> str:
@@ -38,7 +38,6 @@ class TrustedAuthority:
         R_reg = random.randint(100, 100000)
         T2 = get_timestamp()
         self._pending = {"VID": VID, "VPR": VPR, "MR_fx": MR_fx, "alpha": alpha, "R_reg": R_reg, "T1": T1, "T2": T2}
-        TA_comp_time = time.time() - start
         response = f"{alpha}&{R_reg}&{T2}"
         return response
 
@@ -54,11 +53,11 @@ class TrustedAuthority:
         if pending is None:
             print("TA: no pending registration")
             return "F"
-        # check
+        
         if get_timestamp() - T3 < 4 and pending["R_reg"] == R_reg_star:
             TA_comp_time = time.time() - start
             reg_latency = T3 - pending["T1"] if T3 > pending["T1"] else 0.0
-            row = [pending["VID"], pending["VPR"], pending["alpha"], pending["R_reg"], pending["MR_fx"], MR_fstar, TA_comp_time, reg_latency]
+            row = [pending["VID"], pending["VPR"], pending["alpha"], pending["R_reg"], pending["MR_fx"], MR_fstar, TA_comp_time, reg_latency,"1.0.0"]
             self.regs.append(row)
             if PYEXCEL_AVAILABLE:
                 try:
@@ -79,11 +78,11 @@ class TrustedAuthority:
         with open(fname, "a", newline="") as f:
             writer = csv.writer(f)
             if header_needed:
-                writer.writerow(["VID", "VPR", "alpha", "R_reg", "MR_fx", "MR_fstar", "TA_comp_time", "reg_latency"])
+                writer.writerow(["VID", "VPR", "alpha", "R_reg", "MR_fx", "MR_fstar", "TA_comp_time", "reg_latency","Version"])
             writer.writerow(row)
 
 
-def run_manufacturer(ta: TrustedAuthority, save_path_veh="FRI_Veh_Reg.xlsx"):
+def run_manufacturer(ta, save_path_veh="FRI_Veh_Reg.xlsx"):
     prime_field = 17
     w_i = [1, 7, 15, 3, 4, 11, 9, 12, 16, 10, 2, 14, 13, 6, 8, 5]
     w_2i = [1, 15, 4, 9, 16, 2, 13, 8]
@@ -102,12 +101,10 @@ def run_manufacturer(ta: TrustedAuthority, save_path_veh="FRI_Veh_Reg.xlsx"):
     VID = "".join(random.SystemRandom().choice(string.ascii_uppercase + string.digits) for _ in range(ID_size))
     PIN = "".join(random.SystemRandom().choice(string.ascii_uppercase + string.digits) for _ in range(ID_size))
     print("VID : ", VID)
-    print("PIN : ", PIN)
 
     r = random.randint(100, 100000)
     VPR = hashlib.sha256(VID.encode("utf-8") + PIN.encode("utf-8") + str(r).encode("utf-8")).hexdigest()
 
-    # polynomial
     fx_list = []
     f_deg = random.randint(6, 12)
     for _ in range(0, f_deg + 1):
@@ -117,7 +114,6 @@ def run_manufacturer(ta: TrustedAuthority, save_path_veh="FRI_Veh_Reg.xlsx"):
     f_w_i = [evaluate_polynomial(fx_list, each) % prime_field for each in w_i]
     MR_fx, _ = mixmerkletree([str(x) for x in f_w_i])
 
-    # split into fe and fo similarly to original (kept same logic)
     fo_list = []
     fe_list = []
     deg = len(fx_list)
@@ -151,7 +147,6 @@ def run_manufacturer(ta: TrustedAuthority, save_path_veh="FRI_Veh_Reg.xlsx"):
     VID_RPR_MRfx_T1 = VID + "&" + VPR + "&" + MR_fx + "&" + T1
     veh_comp_time = time.time() - start1
 
-    # call TA
     ta_response = ta.process_initial(VID_RPR_MRfx_T1)
     alpha_str, R_reg_str, T2_str = ta_response.split("&")
     alpha = int(alpha_str)
@@ -166,14 +161,14 @@ def run_manufacturer(ta: TrustedAuthority, save_path_veh="FRI_Veh_Reg.xlsx"):
 
         MR_fstar, _ = mixmerkletree([str(x) for x in f_star_w_2i])
         T3 = get_timestamp()
-        veh_comp_time += (time.time() - start1) - veh_comp_time  # approximate addition of remaining steps (kept simple)
+        veh_comp_time += (time.time() - start1) - veh_comp_time
 
         R_reg_MR_fstar_T3 = str(R_reg) + "&" + MR_fstar + "&" + str(T3)
 
         status = ta.verify_registration(R_reg_MR_fstar_T3)
         if status == "S":
             print("Reg Done SUCCESS for Veh")
-            row = [listToString(fx_list), VID, VPR, listToString(f_w_i), listToString(f_star_w_2i), veh_comp_time, veh_comp_time]
+            row = [listToString(fx_list), VID, VPR, listToString(f_w_i), listToString(f_star_w_2i), veh_comp_time,"1.0.0"]
             if PYEXCEL_AVAILABLE:
                 try:
                     sheet = pe.get_sheet(file_name=save_path_veh)
@@ -183,7 +178,6 @@ def run_manufacturer(ta: TrustedAuthority, save_path_veh="FRI_Veh_Reg.xlsx"):
                     _save_csv("FRI_Veh_Reg.csv", row)
             else:
                 _save_csv("FRI_Veh_Reg.csv", row)
-            print("Veh Comp Time for ZKP Authentication is ", veh_comp_time)
         else:
             print("Reg failed")
     else:

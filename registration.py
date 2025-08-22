@@ -22,7 +22,7 @@ class TrustedAuthority:
             except Exception:
                 s = pe.Sheet()
                 s.name_columns_by_row(0)
-                s.row += ["VID", "VPR", "alpha", "R_reg", "MR_fx", "MR_fstar", "TA_comp_time", "reg_latency","Version"]
+                s.row += ["VID", "VPR", "alpha", "R_reg", "MR_fx", "MR_fstar", "TA_comp_time", "reg_latency"]
                 s.save_as(self.save_path_ta)
 
     def process_initial(self, vid_rpr_mrfx_t1: str) -> str:
@@ -57,7 +57,7 @@ class TrustedAuthority:
         if get_timestamp() - T3 < 4 and pending["R_reg"] == R_reg_star:
             TA_comp_time = time.time() - start
             reg_latency = T3 - pending["T1"] if T3 > pending["T1"] else 0.0
-            row = [pending["VID"], pending["VPR"], pending["alpha"], pending["R_reg"], pending["MR_fx"], MR_fstar, TA_comp_time, reg_latency,"1.0.0"]
+            row = [pending["VID"], pending["VPR"], pending["alpha"], pending["R_reg"], pending["MR_fx"], MR_fstar, TA_comp_time, reg_latency]
             self.regs.append(row)
             if PYEXCEL_AVAILABLE:
                 try:
@@ -78,7 +78,7 @@ class TrustedAuthority:
         with open(fname, "a", newline="") as f:
             writer = csv.writer(f)
             if header_needed:
-                writer.writerow(["VID", "VPR", "alpha", "R_reg", "MR_fx", "MR_fstar", "TA_comp_time", "reg_latency","Version"])
+                writer.writerow(["VID", "VPR", "alpha", "R_reg", "MR_fx", "MR_fstar", "TA_comp_time", "reg_latency"])
             writer.writerow(row)
 
 
@@ -168,7 +168,7 @@ def run_manufacturer(ta, save_path_veh="FRI_Veh_Reg.xlsx"):
         status = ta.verify_registration(R_reg_MR_fstar_T3)
         if status == "S":
             print("Reg Done SUCCESS for Veh")
-            row = [listToString(fx_list), VID, VPR, listToString(f_w_i), listToString(f_star_w_2i), veh_comp_time,"1.0.0"]
+            row = [listToString(fx_list), VID, VPR, listToString(f_w_i), listToString(f_star_w_2i), veh_comp_time]
             if PYEXCEL_AVAILABLE:
                 try:
                     sheet = pe.get_sheet(file_name=save_path_veh)

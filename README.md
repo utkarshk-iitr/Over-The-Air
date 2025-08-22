@@ -1,5 +1,5 @@
 # Over-The-Air
-Implementation of sending updates to car over the internet securely using cryptography 
+Implementation of sending updates to car over the internet securely using post quantum cryptography 
 
 # Authors
 [Utkarsh Kumar](https://github.com/utkarshk-iitr) <br>

@@ -21,7 +21,7 @@ def zkp_prover(veh_conn,key,VID):
     reg_sheet1 = pe.get_sheet(file_name="FRI_TA_Reg.xlsx")
 
     SecureFrame.send_encrypted_frame(veh_conn,key,VID.encode())
-    Auth_Req_VPR_T1 = SecureFrame.recv_encrypted_frame(veh_conn,key).decode()
+    Auth_Req_VPR_T1,t = SecureFrame.recv_encrypted_frame(veh_conn,key).decode()
     Auth_Req_VPR_T1 = Auth_Req_VPR_T1.split('&')
 
     if len(Auth_Req_VPR_T1)!=3:
@@ -53,7 +53,7 @@ def zkp_prover(veh_conn,key,VID):
         ti_R_auth_i_val_T2 = str(ti)+"&"+str(R_auth)+"&"+str(i_val)+"&"+str(T2)
 
         SecureFrame.send_encrypted_frame(veh_conn,key,ti_R_auth_i_val_T2.encode())
-        proof_pi_R_auth_T3 = SecureFrame.recv_encrypted_frame(veh_conn,key).decode()
+        proof_pi_R_auth_T3, t = SecureFrame.recv_encrypted_frame(veh_conn,key).decode()
 
         proof_pi_R_auth_T3 = proof_pi_R_auth_T3.split('&')
         ABC = proof_pi_R_auth_T3[0]
@@ -149,7 +149,7 @@ class PQClient:
     
     def check_updates(self):
         SecureFrame.send_encrypted_frame(self.sock,self.aes_key,b"check")
-        response = SecureFrame.recv_encrypted_frame(self.sock,self.aes_key)
+        response, t = SecureFrame.recv_encrypted_frame(self.sock,self.aes_key)
         if response:
             self.available_version = response.decode('utf-8')
             print(f"Current version: {self.current_version}")
@@ -165,7 +165,7 @@ class PQClient:
 
         start = time.time()
         zkp_prover(self.sock,self.aes_key,self.VID)
-        res = SecureFrame.recv_encrypted_frame(self.sock,self.aes_key).decode()
+        res, t = SecureFrame.recv_encrypted_frame(self.sock,self.aes_key).decode()
 
         if res!="YES":
             print("[client] Zero-Knowledge Proof failed")
@@ -173,7 +173,7 @@ class PQClient:
 
         print("[client] Zero-Knowledge Proof succeeded in",time.time()-start)
 
-        response = SecureFrame.recv_encrypted_frame(self.sock,self.aes_key)
+        response,t = SecureFrame.recv_encrypted_frame(self.sock,self.aes_key)
         if not response or response.decode()!="OK":
             print(f"Server replied: {response.decode() if response else 'No response'}")
             return
@@ -181,10 +181,12 @@ class PQClient:
         filename = f"car_update_{self.available_version}.exe"
         print(f"Receiving {filename}...")
         start = time.time()
+        ans = 0
         try:
             with open(filename,'wb') as f:
                 while True:
-                    chunk = SecureFrame.recv_encrypted_frame(self.sock,self.aes_key)
+                    chunk,t = SecureFrame.recv_encrypted_frame(self.sock,self.aes_key)
+                    ans += t
                     if chunk is None:
                         print("Transfer aborted")
                         break
@@ -192,6 +194,7 @@ class PQClient:
                     f.write(chunk)
 
             print("File downloaded successfully in",time.time()-start)
+            print(f"Decryption time: {ans} seconds")
 
         except Exception as e:
             print(f"File download error: {e}")
@@ -202,7 +205,7 @@ class PQClient:
     
     def send_command(self,command):
         SecureFrame.send_encrypted_frame(self.sock,self.aes_key,command.encode())
-        response = SecureFrame.recv_encrypted_frame(self.sock,self.aes_key)
+        response, t = SecureFrame.recv_encrypted_frame(self.sock,self.aes_key)
         if response: print(response.decode())
     
     def run(self):
@@ -218,7 +221,7 @@ class PQClient:
                 elif choice=="3": self.install_updates()
                 elif choice=="4":
                     SecureFrame.send_encrypted_frame(self.sock,self.aes_key,b"close")
-                    response = SecureFrame.recv_encrypted_frame(self.sock,self.aes_key)
+                    response, t = SecureFrame.recv_encrypted_frame(self.sock,self.aes_key)
                     if response: print(response.decode())
                     break
                 else:

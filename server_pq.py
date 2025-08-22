@@ -23,7 +23,7 @@ def get_ip():
 def zkp_verifier(client_sock,key):
     N = 16
     reg_sheet1 = pe.get_sheet(file_name="FRI_Veh_Reg.xlsx")
-    VID = SecureFrame.recv_encrypted_frame(client_sock,key).decode()
+    VID, t = SecureFrame.recv_encrypted_frame(client_sock,key).decode()
     reg_flag = 0
 
     for row in reg_sheet1:
@@ -42,7 +42,7 @@ def zkp_verifier(client_sock,key):
     T1 = get_timestamp()
     Auth_Req_VPR_T1 = "A1&"+VPR+"&"+str(T1)
     SecureFrame.send_encrypted_frame(client_sock,key,Auth_Req_VPR_T1.encode())
-    ti_R_auth_i_val_T2 = SecureFrame.recv_encrypted_frame(client_sock,key).decode()
+    ti_R_auth_i_val_T2, t = SecureFrame.recv_encrypted_frame(client_sock,key).decode()
     ti_R_auth_i_val_T2 = ti_R_auth_i_val_T2.split('&')
 
     ti = ti_R_auth_i_val_T2[0]
@@ -69,7 +69,7 @@ def zkp_verifier(client_sock,key):
         T3 = get_timestamp()
         proof_pi_R_auth_T3 = ABC_proof+"&"+auth_path_for_ti+"&"+R_auth+"&"+str(T3)
         SecureFrame.send_encrypted_frame(client_sock,key,proof_pi_R_auth_T3.encode())
-        VIDnew_Auth_status_S_auth = SecureFrame.recv_encrypted_frame(client_sock,key).decode()        
+        VIDnew_Auth_status_S_auth, t = SecureFrame.recv_encrypted_frame(client_sock,key).decode()        
         VIDnew_Auth_status_S_auth = VIDnew_Auth_status_S_auth.split('&')
 
         if VIDnew_Auth_status_S_auth[1]=="S":
@@ -125,7 +125,7 @@ class PQServer:
     def command_loop(self,client_sock,key):
         while True:
             try:
-                plaintext = SecureFrame.recv_encrypted_frame(client_sock,key)
+                plaintext, t = SecureFrame.recv_encrypted_frame(client_sock,key)
                 if plaintext is None:
                     break
                 
@@ -163,9 +163,10 @@ class PQServer:
         filename = f"update_{version}.exe"
         start = time.time()
         
+        ans = 0
         try:
             with open(filename,'rb') as f:
-                SecureFrame.send_encrypted_frame(client_sock,key,b"OK")
+                ans += SecureFrame.send_encrypted_frame(client_sock,key,b"OK")
                 chunk_size = 4096
                 while True:
                     chunk = f.read(chunk_size)
@@ -174,6 +175,7 @@ class PQServer:
                         break
                     SecureFrame.send_encrypted_frame(client_sock,key,chunk)
             print("[server] File transfer completed in",time.time()-start)
+            print(f"Encryption time: {ans} seconds")
 
         except FileNotFoundError:
             SecureFrame.send_encrypted_frame(client_sock,key,b"NO")

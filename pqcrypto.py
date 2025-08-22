@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
-import oqs
+import oqs,time
 
 class PQCrypto:
     def write_u32_be(value):
@@ -144,8 +144,10 @@ class SecureFrame:
     
     
     def send_encrypted_frame(sock,key,plaintext):
+        start = time.time()
         iv,ciphertext,tag = PQCrypto.aes256_gcm_encrypt(key,plaintext)
-        
+        end = time.time()
+
         sock.send(PQCrypto.write_u32_be(len(iv)))
         SecureFrame.send_all(sock,iv)
         
@@ -154,6 +156,7 @@ class SecureFrame:
 
         sock.send(PQCrypto.write_u32_be(len(tag)))
         SecureFrame.send_all(sock,tag)
+        return end - start
     
     
     def recv_encrypted_frame(sock,key):
@@ -173,8 +176,11 @@ class SecureFrame:
                 raise ValueError("Invalid tag length")
             tag = SecureFrame.recv_all(sock,tag_len)
             
-            return PQCrypto.aes256_gcm_decrypt(key,iv,ciphertext,tag)
-            
+            start = time.time()
+            pt = PQCrypto.aes256_gcm_decrypt(key,iv,ciphertext,tag)
+            end = time.time()
+            return pt,end-start
+
         except Exception as e:
             print(f"Frame receive error: {e}")
             return None

@@ -13,96 +13,81 @@ from merkle import *
 import random,string
 
 
-def zkp_prover(veh_conn,key):
+def zkp_prover(veh_conn,key,VID):
     prime_field = 17
     w = 7
     N = 16
     ID_size = 7
-    reg_sheet1 = pe.get_sheet (file_name= "FRI_TA_Reg.xlsx")
-    auth_sheet1 = pe.get_sheet (file_name= "FRI_RSU1_Auth.xlsx")
+    reg_sheet1 = pe.get_sheet(file_name="FRI_TA_Reg.xlsx")
 
-    fetch_reg_details = 0
-    VID = "KAF91EA"
     SecureFrame.send_encrypted_frame(veh_conn,key,VID.encode())
-    Auth_Req_VPR_T1 =  SecureFrame.recv_encrypted_frame(veh_conn,key).decode()
-    Auth_Req_VPR_T1 = [i for i in Auth_Req_VPR_T1.split('&')]   
+    Auth_Req_VPR_T1 = SecureFrame.recv_encrypted_frame(veh_conn,key).decode()
+    Auth_Req_VPR_T1 = Auth_Req_VPR_T1.split('&')
+
+    if len(Auth_Req_VPR_T1)!=3:
+        print("Unable to fetch vehicle details correctly")
+        exit(0)
 
     Auth_Req = Auth_Req_VPR_T1[0]
     VPR_star = Auth_Req_VPR_T1[1]
     T1 = float(Auth_Req_VPR_T1[2])
+    found = 0
 
-    start_latency = time.time()
-    start1_comp_time = time.time()
-
-    if Auth_Req == "A1" and get_timestamp() - T1 < 4 :
-        for row in reg_sheet1 :
-            if row[1] == VPR_star :
-                VPR = row[1]
+    if Auth_Req=="A1" and get_timestamp()-T1<4:
+        for row in reg_sheet1:
+            if row[1]==VPR_star:
                 alpha = row[2]
                 MR_fx = row[4]
                 MR_fstar = row[5]
-                fetch_reg_details = 1 
+                found = 1 
                 break
 
-        if fetch_reg_details == 1 :
-            i_val = random.randint(0,N//2-1)
-            ti = random.randint(0, 1)
-            T2 = get_timestamp ()
-            R_auth = random.randint(100, 100000)
-                
-            ti_R_auth_i_val_T2 = str(ti)+ "&"+ str(R_auth) + "&"+ str(i_val) + "&"+ str(T2)
-            end1_comp_time = time.time ()
+        if found!=1:
+            print("Vehicle not registered")
+            exit(0)
 
-            auth_comp_time = end1_comp_time - start1_comp_time
+        i_val = random.randint(0,N//2-1)
+        ti = random.randint(0,1)
+        R_auth = random.randint(100,100000)
+        T2 = get_timestamp()
+        ti_R_auth_i_val_T2 = str(ti)+"&"+str(R_auth)+"&"+str(i_val)+"&"+str(T2)
 
-            SecureFrame.send_encrypted_frame(veh_conn,key,ti_R_auth_i_val_T2.encode())
-            proof_pi_R_auth_T3 = SecureFrame.recv_encrypted_frame(veh_conn,key).decode()
+        SecureFrame.send_encrypted_frame(veh_conn,key,ti_R_auth_i_val_T2.encode())
+        proof_pi_R_auth_T3 = SecureFrame.recv_encrypted_frame(veh_conn,key).decode()
 
-            proof_pi_R_auth_T3 = [i for i in proof_pi_R_auth_T3.split('&')]
-            start2_comp_time = time.time ()
-            ABC = proof_pi_R_auth_T3[0]
-            Authpath_ti = eval(proof_pi_R_auth_T3[1])
-            R_auth_star = int(proof_pi_R_auth_T3[2])
-            T3 = proof_pi_R_auth_T3[3]
+        proof_pi_R_auth_T3 = proof_pi_R_auth_T3.split('&')
+        ABC = proof_pi_R_auth_T3[0]
+        Authpath_ti = eval(proof_pi_R_auth_T3[1])
+        R_auth_star = int(proof_pi_R_auth_T3[2])
+        T3 = float(proof_pi_R_auth_T3[3])
 
-            if get_timestamp () - float(T3) < 4 and R_auth_star == R_auth :
+        if get_timestamp()-T3<4 and R_auth_star==R_auth:
+            if ti==0: merkle_ver_status = Ver_merkle_path(Authpath_ti,MR_fx)
+            elif ti==1: merkle_ver_status = Ver_merkle_path(Authpath_ti,MR_fstar)
 
-                if ti == 0 :
-                    merkle_ver_status = Ver_merkle_path (Authpath_ti, MR_fx )
-                elif ti == 1 :
-                    merkle_ver_status = Ver_merkle_path (Authpath_ti, MR_fstar )
+            if merkle_ver_status!=1:
+                print("Merkle verification failed")
+                exit(0)
 
-                if merkle_ver_status == 1 :
-                    ABC_proof_list = [int(i) for i in ABC.split(',')]
+            ABC_proof_list = [int(i) for i in ABC.split(',')]
+            y_values = [ABC_proof_list[0],ABC_proof_list[1]]
+            w_minus_i_mod_p = pow(w,-i_val,prime_field)
+            inv_2_mod_p = pow(2,-1,prime_field)
 
-                    x_values = [ (w**i_val) % prime_field, (w**(N//2+ i_val)) % prime_field] #, alpha 
-                    y_values = [ ABC_proof_list[0] , ABC_proof_list[1] ]
-                    w_minus_i_mod_p = pow(w, -i_val, prime_field)
-                    inv_2_mod_p = pow(2, -1, prime_field)
+            term1 = 1+alpha*w_minus_i_mod_p
+            term2 = 1-alpha*w_minus_i_mod_p
 
-                    term1 = 1 + alpha * w_minus_i_mod_p 
-                    term2 = 1 - alpha * w_minus_i_mod_p
+            y3_for_alpha = ((term1*y_values[0] + term2*y_values[1])*inv_2_mod_p)%prime_field
 
-                    y3_for_alpha = ((term1 *  y_values[0] + term2 * y_values[1] ) * inv_2_mod_p) % prime_field
-
-                    if y3_for_alpha == ABC_proof_list[2]:
-                        VIDnew  = ''.join(random.SystemRandom().choice(string.ascii_uppercase + string.digits) for _ in range(ID_size))
-                        S_auth = random.randint(100, 10000)
-
-                        end2_comp_time = time.time () 
-                        auth_comp_time += end2_comp_time - start2_comp_time
-
-                        VIDnew_Hand_status_S_auth = VIDnew + "&"+ "S" + "&"+ str(S_auth)
-                        SecureFrame.send_encrypted_frame(veh_conn,key,VIDnew_Hand_status_S_auth.encode())
-
-                        end_latency = time.time ()
-                        total_latency = end_latency - start_latency
-                        auth_sheet1.row += [ VIDnew, S_auth, auth_comp_time, total_latency ]
-                        auth_sheet1.save_as ("FRI_RSU1_Auth.xlsx")
-                                
-                    else :
-                        Auth_status = "F"
-                        SecureFrame.send_encrypted_frame(veh_conn,key,Auth_status.encode())                
+            if y3_for_alpha == ABC_proof_list[2]:
+                VIDnew  = ''.join(random.SystemRandom().choice(string.ascii_uppercase + string.digits) for _ in range(ID_size))
+                S_auth = random.randint(100, 10000)
+                VIDnew_Hand_status_S_auth = VIDnew + "&"+ "S" + "&"+ str(S_auth)
+                SecureFrame.send_encrypted_frame(veh_conn,key,VIDnew_Hand_status_S_auth.encode())
+                        
+            else :
+                Auth_status = "F"
+                SecureFrame.send_encrypted_frame(veh_conn,key,Auth_status.encode())                
 
 
 class PQClient:
@@ -113,7 +98,8 @@ class PQClient:
         self.sig_alg = "Dilithium3"
         self.current_version = "1.0.0"
         self.available_version = "1.0.0"
-    
+        self.VID = "KAF91EA"
+
     def connect_and_handshake(self):
         self.sock = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
         
@@ -123,9 +109,9 @@ class PQClient:
 
             cert_len = PQCrypto.read_u32_be(SecureFrame.recv_all(self.sock,4))
             cert = SecureFrame.recv_all(self.sock,cert_len)
-
             kyber_pub, dilithium_pub, signature = Certificate.parse_cert(cert)
             message = kyber_pub + dilithium_pub
+
             if not SignatureManager.verify(self.sig_alg,message,signature,dilithium_pub):
                 raise ValueError("Server certificate signature invalid")
             
@@ -176,10 +162,10 @@ class PQClient:
         command = f"get {self.available_version}"
         SecureFrame.send_encrypted_frame(self.sock,self.aes_key,command.encode())
 
-        zkp_prover(self.sock,self.aes_key)
+        zkp_prover(self.sock,self.aes_key,self.VID)
         res = SecureFrame.recv_encrypted_frame(self.sock,self.aes_key).decode()
 
-        if(res != "YES"):
+        if res!="YES":
             print("[client] Zero-Knowledge Proof failed")
             return
 
@@ -200,8 +186,7 @@ class PQClient:
                     if chunk is None:
                         print("Transfer aborted")
                         break
-                    if len(chunk)==0:
-                        break
+                    if len(chunk)==0: break
                     f.write(chunk)
             
             print("File downloaded successfully")
@@ -216,8 +201,7 @@ class PQClient:
     def send_command(self,command):
         SecureFrame.send_encrypted_frame(self.sock,self.aes_key,command.encode())
         response = SecureFrame.recv_encrypted_frame(self.sock,self.aes_key)
-        if response:
-            print(response.decode())
+        if response: print(response.decode())
     
     def run(self):
         if not self.connect_and_handshake():

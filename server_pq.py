@@ -22,71 +22,58 @@ def get_ip():
 
 def zkp_verifier(client_sock,key):
     N = 16
-    reg_sheet1 = pe.get_sheet (file_name= "FRI_Veh_Reg.xlsx")
-    auth_sheet1 = pe.get_sheet (file_name= "FRI_Veh_Auth.xlsx")
+    reg_sheet1 = pe.get_sheet(file_name="FRI_Veh_Reg.xlsx")
     VID = SecureFrame.recv_encrypted_frame(client_sock,key).decode()
     reg_flag = 0
 
-    for row in reg_sheet1 :
-        if row[1] == VID :
+    for row in reg_sheet1:
+        if row[1]==VID:
             VPR = row[2]
             f_w_i = [int(i) for i in row[3].split(',')]
             f_star_w_2i = [int(i) for i in row[4].split(',')]
             reg_flag = 1
             break
 
-    if reg_flag == 1 : 
-        f_w_i_root_hash, f_w_i_mtree_obj = mixmerkletree (f_w_i)
-        f_star_w_2i_root_hash, f_star_w_2i_mtree_obj = mixmerkletree (f_star_w_2i)
+    if reg_flag!=1: return 'F'
 
-        T1 = str(get_timestamp ())
-        Auth_Req_VPR_T1 = "A1" + "&"+ VPR +"&"+ T1
-        SecureFrame.send_encrypted_frame(client_sock,key,Auth_Req_VPR_T1.encode())
-        ti_R_auth_i_val_T2 = SecureFrame.recv_encrypted_frame(client_sock,key).decode()
+    _, f_w_i_mtree_obj = mixmerkletree(f_w_i)
+    _, f_star_w_2i_mtree_obj = mixmerkletree(f_star_w_2i)
 
-        start1_comp_time = time.time ()
-        ti_R_auth_i_val_T2 = [i for i in ti_R_auth_i_val_T2.split('&')]
+    T1 = get_timestamp()
+    Auth_Req_VPR_T1 = "A1&"+VPR+"&"+str(T1)
+    SecureFrame.send_encrypted_frame(client_sock,key,Auth_Req_VPR_T1.encode())
+    ti_R_auth_i_val_T2 = SecureFrame.recv_encrypted_frame(client_sock,key).decode()
+    ti_R_auth_i_val_T2 = ti_R_auth_i_val_T2.split('&')
 
-        ti = ti_R_auth_i_val_T2[0]
-        R_auth = ti_R_auth_i_val_T2[1]
-        i_val = int(ti_R_auth_i_val_T2[2])
-        T2 = float (ti_R_auth_i_val_T2[3])
+    ti = ti_R_auth_i_val_T2[0]
+    R_auth = ti_R_auth_i_val_T2[1]
+    i_val = int(ti_R_auth_i_val_T2[2])
+    T2 = float(ti_R_auth_i_val_T2[3])
 
-        if get_timestamp () - T2 < 4 :
-            get_f_w_i_val = f_w_i[i_val]
-            get_f_w_N2_i = f_w_i[int(N//2) + i_val]
-            get_f_star_w_2i = f_star_w_2i[i_val]
+    if get_timestamp()-T2<4:
+        get_f_w_i_val = f_w_i[i_val]
+        get_f_w_N2_i = f_w_i[int(N//2)+i_val]
+        get_f_star_w_2i = f_star_w_2i[i_val]
 
-            ABC_proof = [get_f_w_i_val, get_f_w_N2_i, get_f_star_w_2i]
-            ABC_proof = listToString(ABC_proof)
+        ABC_proof = [get_f_w_i_val,get_f_w_N2_i,get_f_star_w_2i]
+        ABC_proof = listToString(ABC_proof)
 
-            if ti == "0" :
-                auth_path_for_ti = f_w_i_mtree_obj.getAuthenticationPath(Node.hash(str(f_w_i[i_val])), i_val)
+        if ti == "0" :
+            auth_path_for_ti = f_w_i_mtree_obj.getAuthenticationPath(Node.hash(str(f_w_i[i_val])), i_val)
 
-            elif ti == "1" :
-                auth_path_for_ti = f_star_w_2i_mtree_obj.getAuthenticationPath(Node.hash(str(f_star_w_2i[i_val])), i_val)
+        elif ti == "1" :
+            auth_path_for_ti = f_star_w_2i_mtree_obj.getAuthenticationPath(Node.hash(str(f_star_w_2i[i_val])), i_val)
 
-            auth_path_for_ti = str(auth_path_for_ti)
+        auth_path_for_ti = str(auth_path_for_ti)
 
-            T3 = get_timestamp ()
+        T3 = get_timestamp()
+        proof_pi_R_auth_T3 = ABC_proof+"&"+auth_path_for_ti+"&"+R_auth+"&"+str(T3)
+        SecureFrame.send_encrypted_frame(client_sock,key,proof_pi_R_auth_T3.encode())
+        VIDnew_Auth_status_S_auth = SecureFrame.recv_encrypted_frame(client_sock,key).decode()        
+        VIDnew_Auth_status_S_auth = VIDnew_Auth_status_S_auth.split('&')
 
-            proof_pi_R_auth_T3 = ABC_proof + "&"+ auth_path_for_ti + "&"+ R_auth + "&"+ str(T3)
-
-            end1_comp_time = time.time ()
-            comp_time = end1_comp_time - start1_comp_time
-            SecureFrame.send_encrypted_frame(client_sock,key,proof_pi_R_auth_T3.encode())
-            VIDnew_Auth_status_S_auth = SecureFrame.recv_encrypted_frame(client_sock,key).decode()  # Auth status from RSU1
-            
-            VIDnew_Auth_status_S_auth = [i for i in VIDnew_Auth_status_S_auth.split('&')]
-            VIDnew = VIDnew_Auth_status_S_auth[0]
-            S_auth = VIDnew_Auth_status_S_auth[2]
-
-            if VIDnew_Auth_status_S_auth[1] == "S" :
-                auth_sheet1.row += [ VID, VIDnew, S_auth, comp_time ]
-                auth_sheet1.save_as ("FRI_Veh_Auth.xlsx")
-                return 'S'
-        else :
-            return 'F'
+        if VIDnew_Auth_status_S_auth[1]=="S":
+            return 'S'
     else :
         return 'F'
 

@@ -30,7 +30,6 @@ class PQCrypto:
     def aes256_gcm_encrypt(key,plaintext,aad=None):
         iv = os.urandom(12)
         encryptor = Cipher(algorithms.AES(key),modes.GCM(iv),backend=default_backend()).encryptor()
-
         if aad: encryptor.authenticate_additional_data(aad)
         ciphertext = encryptor.update(plaintext) + encryptor.finalize()
         return iv, ciphertext, encryptor.tag
@@ -38,7 +37,6 @@ class PQCrypto:
 
     def aes256_gcm_decrypt(key,iv,ciphertext,tag,aad=None):
         decryptor = Cipher(algorithms.AES(key),modes.GCM(iv, tag),backend=default_backend()).decryptor()
-
         if aad: decryptor.authenticate_additional_data(aad)
         return decryptor.update(ciphertext) + decryptor.finalize()
 

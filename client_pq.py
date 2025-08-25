@@ -21,8 +21,8 @@ def zkp_prover(veh_conn,key,VID):
     reg_sheet1 = pe.get_sheet(file_name="FRI_TA_Reg.xlsx")
 
     SecureFrame.send_encrypted_frame(veh_conn,key,VID.encode())
-    Auth_Req_VPR_T1,t = SecureFrame.recv_encrypted_frame(veh_conn,key).decode()
-    Auth_Req_VPR_T1 = Auth_Req_VPR_T1.split('&')
+    Auth_Req_VPR_T1,t = SecureFrame.recv_encrypted_frame(veh_conn,key)
+    Auth_Req_VPR_T1 = Auth_Req_VPR_T1.decode().split('&')
 
     if len(Auth_Req_VPR_T1)!=3:
         print("Unable to fetch vehicle details correctly")
@@ -53,9 +53,9 @@ def zkp_prover(veh_conn,key,VID):
         ti_R_auth_i_val_T2 = str(ti)+"&"+str(R_auth)+"&"+str(i_val)+"&"+str(T2)
 
         SecureFrame.send_encrypted_frame(veh_conn,key,ti_R_auth_i_val_T2.encode())
-        proof_pi_R_auth_T3, t = SecureFrame.recv_encrypted_frame(veh_conn,key).decode()
+        proof_pi_R_auth_T3, t = SecureFrame.recv_encrypted_frame(veh_conn,key)
 
-        proof_pi_R_auth_T3 = proof_pi_R_auth_T3.split('&')
+        proof_pi_R_auth_T3 = proof_pi_R_auth_T3.decode().split('&')
         ABC = proof_pi_R_auth_T3[0]
         Authpath_ti = eval(proof_pi_R_auth_T3[1])
         R_auth_star = int(proof_pi_R_auth_T3[2])
@@ -151,7 +151,7 @@ class PQClient:
         SecureFrame.send_encrypted_frame(self.sock,self.aes_key,b"check")
         response, t = SecureFrame.recv_encrypted_frame(self.sock,self.aes_key)
         if response:
-            self.available_version = response.decode('utf-8')
+            self.available_version = response.decode()
             print(f"Current version: {self.current_version}")
             print(f"Available version: {self.available_version}")
     
@@ -165,9 +165,9 @@ class PQClient:
 
         start = time.time()
         zkp_prover(self.sock,self.aes_key,self.VID)
-        res, t = SecureFrame.recv_encrypted_frame(self.sock,self.aes_key).decode()
+        res, t = SecureFrame.recv_encrypted_frame(self.sock,self.aes_key)
 
-        if res!="YES":
+        if res.decode()!="YES":
             print("[client] Zero-Knowledge Proof failed")
             return
 

@@ -23,7 +23,8 @@ def get_ip():
 def zkp_verifier(client_sock,key):
     N = 16
     reg_sheet1 = pe.get_sheet(file_name="FRI_Veh_Reg.xlsx")
-    VID, t = SecureFrame.recv_encrypted_frame(client_sock,key).decode()
+    VID, t = SecureFrame.recv_encrypted_frame(client_sock,key)
+    VID = VID.decode()
     reg_flag = 0
 
     for row in reg_sheet1:
@@ -42,8 +43,8 @@ def zkp_verifier(client_sock,key):
     T1 = get_timestamp()
     Auth_Req_VPR_T1 = "A1&"+VPR+"&"+str(T1)
     SecureFrame.send_encrypted_frame(client_sock,key,Auth_Req_VPR_T1.encode())
-    ti_R_auth_i_val_T2, t = SecureFrame.recv_encrypted_frame(client_sock,key).decode()
-    ti_R_auth_i_val_T2 = ti_R_auth_i_val_T2.split('&')
+    ti_R_auth_i_val_T2, t = SecureFrame.recv_encrypted_frame(client_sock,key)
+    ti_R_auth_i_val_T2 = ti_R_auth_i_val_T2.decode().split('&')
 
     ti = ti_R_auth_i_val_T2[0]
     R_auth = ti_R_auth_i_val_T2[1]
@@ -69,8 +70,8 @@ def zkp_verifier(client_sock,key):
         T3 = get_timestamp()
         proof_pi_R_auth_T3 = ABC_proof+"&"+auth_path_for_ti+"&"+R_auth+"&"+str(T3)
         SecureFrame.send_encrypted_frame(client_sock,key,proof_pi_R_auth_T3.encode())
-        VIDnew_Auth_status_S_auth, t = SecureFrame.recv_encrypted_frame(client_sock,key).decode()        
-        VIDnew_Auth_status_S_auth = VIDnew_Auth_status_S_auth.split('&')
+        VIDnew_Auth_status_S_auth, t = SecureFrame.recv_encrypted_frame(client_sock,key)
+        VIDnew_Auth_status_S_auth = VIDnew_Auth_status_S_auth.decode().split('&')
 
         if VIDnew_Auth_status_S_auth[1]=="S":
             return 'S'

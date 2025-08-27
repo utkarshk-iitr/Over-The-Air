@@ -11,6 +11,11 @@ from pqcrypto import *
 from merkle import *
 import pyexcel as pe
 import time
+import csv
+
+f = open("server_time.csv", "a", newline="")
+fw = csv.writer(f)
+li = []
 
 def get_ip():
     try:
@@ -113,6 +118,7 @@ class PQServer:
             PQCrypto.secure_clear(shared_secret)
             
             print("[server] Secure handshake completed in",time.time()-start,"\n")
+            li.append(time.time()-start)
             self.command_loop(client_sock,aes_key)
             
         except Exception as e:
@@ -160,6 +166,7 @@ class PQServer:
             SecureFrame.send_encrypted_frame(client_sock,key,b"NO")
             return
         print("[server] Zero-Knowledge Proof succeeded in",time.time()-start)
+        li.append(time.time()-start)
         SecureFrame.send_encrypted_frame(client_sock,key,b"YES")
         filename = f"update_{version}.exe"
         start = time.time()
@@ -176,7 +183,11 @@ class PQServer:
                         break
                     SecureFrame.send_encrypted_frame(client_sock,key,chunk)
             print("[server] File transfer completed in",time.time()-start)
+            li.append(time.time()-start)
             print(f"Encryption time: {ans} seconds")
+            li.append(ans)
+            fw.writerow(li)
+            li.clear()
 
         except FileNotFoundError:
             SecureFrame.send_encrypted_frame(client_sock,key,b"NO")
@@ -208,3 +219,4 @@ if __name__=="__main__":
 
     server = PQServer(get_ip(),int(sys.argv[1]))
     server.start()
+    f.close()

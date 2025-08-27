@@ -8,8 +8,7 @@ key to server after verifying server certificate. All subsequent messages are RS
 
 import socket
 import sys
-from pqcrypto import *
-from pqcrypto import RSAKeyManager
+from rsa_crypto import *
 import pyexcel as pe
 import time
 from merkle import *

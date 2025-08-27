@@ -7,8 +7,7 @@ ZKP / Merkle code unchanged in logic except using RSA framing.
 import socket
 import threading
 import sys
-from pqcrypto import *
-from pqcrypto import RSAKeyManager
+from rsa_crypto import *
 from merkle import *
 import pyexcel as pe
 import time

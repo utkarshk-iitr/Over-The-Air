@@ -11,7 +11,11 @@ import pyexcel as pe
 import time
 from merkle import *
 import random,string
+import csv
 
+f = open("client_time.csv", "a", newline="")
+fw = csv.writer(f)
+li = []
 
 def zkp_prover(veh_conn,key,VID):
     prime_field = 17
@@ -129,6 +133,7 @@ class PQClient:
             shared_secret = bytearray(shared_secret)
             PQCrypto.secure_clear(shared_secret)
             print("[client] Secure handshake completed in",time.time()-start)
+            li.append(time.time()-start)
             return True
             
         except Exception as e:
@@ -172,7 +177,7 @@ class PQClient:
             return
 
         print("[client] Zero-Knowledge Proof succeeded in",time.time()-start)
-
+        li.append(time.time()-start)
         response,t = SecureFrame.recv_encrypted_frame(self.sock,self.aes_key)
         if not response or response.decode()!="OK":
             print(f"Server replied: {response.decode() if response else 'No response'}")
@@ -194,7 +199,11 @@ class PQClient:
                     f.write(chunk)
 
             print("File downloaded successfully in",time.time()-start)
+            li.append(time.time()-start)
             print(f"Decryption time: {ans} seconds")
+            li.append(ans)
+            fw.writerow(li)
+            li.clear()
 
         except Exception as e:
             print(f"File download error: {e}")
@@ -242,3 +251,4 @@ if __name__=="__main__":
 
     client = PQClient(sys.argv[1],int(sys.argv[2]))
     client.run()
+    f.close()

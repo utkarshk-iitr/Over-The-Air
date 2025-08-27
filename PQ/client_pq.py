@@ -13,8 +13,8 @@ from merkle import *
 import random,string
 import csv
 
-f = open("client_time.csv", "a", newline="")
-fw = csv.writer(f)
+f2 = open("client_time.csv", "a", newline="")
+fw = csv.writer(f2)
 li = []
 
 def zkp_prover(veh_conn,key,VID):
@@ -251,4 +251,4 @@ if __name__=="__main__":
 
     client = PQClient(sys.argv[1],int(sys.argv[2]))
     client.run()
-    f.close()
+    f2.close()

@@ -145,7 +145,7 @@ class SecureFrame:
         chunk_count = len(chunks)
         sock.send(PQCrypto.write_u32_be(chunk_count))
 
-        ans = 0
+        ans = 0.0
         for ch in chunks:
             start = time.time()
             cipher = RSAKeyManager.encrypt(recipient_pub_bytes, ch)
@@ -159,9 +159,6 @@ class SecureFrame:
         raw = SecureFrame.recv_all(sock, 4)
         chunk_count = PQCrypto.read_u32_be(raw)
 
-        if chunk_count == 0:
-            return b''
-
         parts = []
         ans = 0
         for _ in range(chunk_count):
@@ -174,4 +171,5 @@ class SecureFrame:
             plain = rsa_manager.decrypt(cipher)
             ans += time.time() - start
             parts.append(plain)
-        return (b''.join(parts), ans)
+
+        return b''.join(parts), ans

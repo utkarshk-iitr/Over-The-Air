@@ -174,10 +174,10 @@ class PQServer:
                 while True:
                     chunk = f.read(chunk_size)
                     if not chunk:
-                        # send empty frame as end marker
                         SecureFrame.send_encrypted_frame(client_sock, client_pub_bytes, b"")
                         break
                     SecureFrame.send_encrypted_frame(client_sock, client_pub_bytes, chunk)
+            
             print("[server] File transfer completed in", time.time() - start)
             li.append(time.time() - start)
             print(f"Encryption time: {ans} seconds")

@@ -23,7 +23,6 @@ class PQCrypto:
                 for i in range(len(data)):
                     data[i] = 0
             except Exception:
-                # immutable bytes -> ignore
                 pass
 
 class RSAKeyManager:
@@ -46,8 +45,7 @@ class RSAKeyManager:
     def decrypt(self, ciphertext):
         if not self.private_key:
             raise RuntimeError("No RSA private key available for decryption")
-        plaintext = self.private_key.decrypt(
-            ciphertext,
+        plaintext = self.private_key.decrypt(ciphertext,
             padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()),
                          algorithm=hashes.SHA256(), label=None)
         )
@@ -63,7 +61,6 @@ class RSAKeyManager:
         )
         return signature
 
-    @staticmethod
     def encrypt(public_key_bytes, plaintext):
         pub = serialization.load_pem_public_key(public_key_bytes, backend=default_backend())
         ciphertext = pub.encrypt(
@@ -73,7 +70,6 @@ class RSAKeyManager:
         )
         return ciphertext
 
-    @staticmethod
     def verify(public_key_bytes, message, signature):
         try:
             pub = serialization.load_pem_public_key(public_key_bytes, backend=default_backend())
@@ -87,12 +83,7 @@ class RSAKeyManager:
         except Exception:
             return False
 
-    @staticmethod
     def rsa_max_plain_len(public_key_bytes):
-        """
-        Compute maximum plaintext size for RSA OAEP SHA256:
-        max = key_bytes - 2*hash_len - 2
-        """
         pub = serialization.load_pem_public_key(public_key_bytes, backend=default_backend())
         key_size_bits = pub.key_size
         key_size_bytes = (key_size_bits + 7) // 8
@@ -101,10 +92,6 @@ class RSAKeyManager:
 
 
 class Certificate:
-    """
-    Simple certificate: [rsa_pub_len(4)] [rsa_pub_bytes] [sig_len(4)] [signature]
-    signature = server_private_key.sign(rsa_pub_bytes)
-    """
     def create_cert(rsa_pub, rsa_manager):
         message = rsa_pub
         signature = rsa_manager.sign(message)
@@ -128,19 +115,6 @@ class Certificate:
 
 
 class SecureFrame:
-    """
-    RSA-only framed transport.
-    Protocol for an 'encrypted frame' (a message):
-      - u32 chunk_count
-      - for each chunk:
-          - u32 chunk_cipher_len
-          - chunk_cipher_bytes
-
-    If chunk_count == 0 -> empty payload (useful as EOF/marker).
-    Decryption is done using the receiver's RSA private key (RSAKeyManager.decrypt).
-    Encryption is done with the recipient's public key bytes (RSAKeyManager.encrypt).
-    """
-
     def send_all(sock, data):
         total_sent = 0
         while total_sent < len(data):
@@ -159,10 +133,7 @@ class SecureFrame:
         return data
 
     def send_encrypted_frame(sock, recipient_pub_bytes, plaintext):
-        """
-        Encrypts `plaintext` into RSA-OAEP sized chunks using recipient_pub_bytes and sends them.
-        """
-        # If empty plaintext, send chunk_count = 0
+
         if plaintext is None:
             plaintext = b''
 
@@ -170,25 +141,21 @@ class SecureFrame:
         if max_plain <= 0:
             raise ValueError("Recipient RSA key too small or unsupported")
 
-        # split into chunks
         chunks = [plaintext[i:i + max_plain] for i in range(0, len(plaintext), max_plain)] if len(plaintext) > 0 else []
         chunk_count = len(chunks)
-
-        # send chunk_count
         sock.send(PQCrypto.write_u32_be(chunk_count))
 
-        # for each chunk, encrypt and send len+data
+        ans = 0
         for ch in chunks:
+            start = time.time()
             cipher = RSAKeyManager.encrypt(recipient_pub_bytes, ch)
+            ans += time.time() - start
             sock.send(PQCrypto.write_u32_be(len(cipher)))
             SecureFrame.send_all(sock, cipher)
 
+        return ans
+
     def recv_encrypted_frame(sock, rsa_manager):
-        """
-        Receives an RSA-framed message and decrypts using rsa_manager (must have private key).
-        Returns plaintext bytes.
-        """
-        # read chunk_count
         raw = SecureFrame.recv_all(sock, 4)
         chunk_count = PQCrypto.read_u32_be(raw)
 
@@ -196,12 +163,15 @@ class SecureFrame:
             return b''
 
         parts = []
+        ans = 0
         for _ in range(chunk_count):
             clen_raw = SecureFrame.recv_all(sock, 4)
             clen = PQCrypto.read_u32_be(clen_raw)
             if clen <= 0 or clen > 256 * 8:  # sanity cap
                 raise ValueError("Invalid RSA chunk length")
             cipher = SecureFrame.recv_all(sock, clen)
+            start = time.time()
             plain = rsa_manager.decrypt(cipher)
+            ans += time.time() - start
             parts.append(plain)
-        return b''.join(parts)
+        return (b''.join(parts), ans)

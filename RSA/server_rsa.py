@@ -11,6 +11,11 @@ from rsa_crypto import *
 from merkle import *
 import pyexcel as pe
 import time
+import csv
+
+f = open("server_time.csv", "a", newline="")
+fw = csv.writer(f)
+li = []
 
 def get_ip():
     try:
@@ -21,14 +26,10 @@ def get_ip():
         return "127.0.0.1"
 
 def zkp_verifier(client_sock, server_rsa_manager, client_pub_bytes):
-    """
-    Server decrypts incoming frames with server_rsa_manager,
-    and encrypts outgoing frames with client_pub_bytes.
-    """
     N = 16
     reg_sheet1 = pe.get_sheet(file_name="FRI_Veh_Reg.xlsx")
 
-    VID_bytes = SecureFrame.recv_encrypted_frame(client_sock, server_rsa_manager)
+    VID_bytes,t = SecureFrame.recv_encrypted_frame(client_sock, server_rsa_manager)
     VID = VID_bytes.decode()
     reg_flag = 0
 
@@ -50,7 +51,7 @@ def zkp_verifier(client_sock, server_rsa_manager, client_pub_bytes):
     Auth_Req_VPR_T1 = "A1&" + VPR + "&" + str(T1)
     SecureFrame.send_encrypted_frame(client_sock, client_pub_bytes, Auth_Req_VPR_T1.encode())
 
-    ti_R_auth_i_val_T2 = SecureFrame.recv_encrypted_frame(client_sock, server_rsa_manager)
+    ti_R_auth_i_val_T2,t = SecureFrame.recv_encrypted_frame(client_sock, server_rsa_manager)
     ti_R_auth_i_val_T2 = ti_R_auth_i_val_T2.decode().split('&')
 
     ti = ti_R_auth_i_val_T2[0]
@@ -78,7 +79,7 @@ def zkp_verifier(client_sock, server_rsa_manager, client_pub_bytes):
         proof_pi_R_auth_T3 = ABC_proof + "&" + auth_path_for_ti + "&" + R_auth + "&" + str(T3)
         SecureFrame.send_encrypted_frame(client_sock, client_pub_bytes, proof_pi_R_auth_T3.encode())
 
-        VIDnew_Auth_status_S_auth = SecureFrame.recv_encrypted_frame(client_sock, server_rsa_manager).decode().split('&')
+        VIDnew_Auth_status_S_auth = SecureFrame.recv_encrypted_frame(client_sock, server_rsa_manager)[0].decode().split('&')
         if VIDnew_Auth_status_S_auth[1] == "S":
             return 'S'
     else:
@@ -95,7 +96,7 @@ class PQServer:
         print(f"[server] Client connected: {client_addr}")
 
         try:
-            # generate server RSA keypair for this connection (could be persistent)
+            start = time.time()
             rsa_manager = RSAKeyManager(2048)
             rsa_pub, rsa_manager = rsa_manager.generate_keypair()
 
@@ -108,8 +109,8 @@ class PQServer:
             client_pub_len = PQCrypto.read_u32_be(SecureFrame.recv_all(client_sock, 4))
             client_pub = SecureFrame.recv_all(client_sock, client_pub_len)
 
-            print("[server] Exchanged public keys with client, entering RSA-only session.")
-
+            print("[server] Exchanged public keys with client(RSA)",time.time()-start)
+            li.append(time.time()-start)
             self.command_loop(client_sock, rsa_manager, client_pub)
 
         except Exception as e:
@@ -123,8 +124,7 @@ class PQServer:
     def command_loop(self, client_sock, server_rsa_manager, client_pub_bytes):
         while True:
             try:
-                # decrypt incoming command with server private key
-                plaintext = SecureFrame.recv_encrypted_frame(client_sock, server_rsa_manager)
+                plaintext,t = SecureFrame.recv_encrypted_frame(client_sock, server_rsa_manager)
                 if plaintext is None:
                     break
                 if len(plaintext) == 0:
@@ -162,13 +162,14 @@ class PQServer:
             return
         
         print("[server] Zero-Knowledge Proof succeeded in", time.time() - start)
+        li.append(time.time() - start)
         SecureFrame.send_encrypted_frame(client_sock, client_pub_bytes, b"YES")
         filename = f"update_{version}.exe"
         start = time.time()
-
+        ans = 0
         try:
             with open(filename, 'rb') as f:
-                SecureFrame.send_encrypted_frame(client_sock, client_pub_bytes, b"OK")
+                ans += SecureFrame.send_encrypted_frame(client_sock, client_pub_bytes, b"OK")
                 chunk_size = 4096  # we'll re-chunk on RSA side; this is file read size
                 while True:
                     chunk = f.read(chunk_size)
@@ -178,6 +179,11 @@ class PQServer:
                         break
                     SecureFrame.send_encrypted_frame(client_sock, client_pub_bytes, chunk)
             print("[server] File transfer completed in", time.time() - start)
+            li.append(time.time() - start)
+            print(f"Encryption time: {ans} seconds")
+            li.append(ans)
+            fw.writerow(li)
+            li.clear()
 
         except FileNotFoundError:
             SecureFrame.send_encrypted_frame(client_sock, client_pub_bytes, b"NO")
@@ -210,3 +216,4 @@ if __name__ == "__main__":
 
     server = PQServer(get_ip(), int(sys.argv[1]))
     server.start()
+    f.close()

@@ -13,13 +13,13 @@ import pyexcel as pe
 import time
 from merkle import *
 import random, string
-import os
+import csv
+
+f = open("client_time.csv", "a", newline="")
+fw = csv.writer(f)
+li = []
 
 def zkp_prover(veh_conn, client_rsa_manager, server_pub_bytes, VID):
-    """
-    Client encrypts outgoing frames with server_pub_bytes, and decrypts incoming frames
-    with client_rsa_manager (private key).
-    """
     prime_field = 17
     w = 7
     N = 16
@@ -27,8 +27,7 @@ def zkp_prover(veh_conn, client_rsa_manager, server_pub_bytes, VID):
     reg_sheet1 = pe.get_sheet(file_name="FRI_TA_Reg.xlsx")
 
     SecureFrame.send_encrypted_frame(veh_conn, server_pub_bytes, VID.encode())
-
-    Auth_Req_VPR_T1 = SecureFrame.recv_encrypted_frame(veh_conn, client_rsa_manager).decode().split('&')
+    Auth_Req_VPR_T1 = SecureFrame.recv_encrypted_frame(veh_conn, client_rsa_manager)[0].decode().split('&')
     if len(Auth_Req_VPR_T1) != 3:
         print("Unable to fetch vehicle details correctly")
         exit(0)
@@ -58,7 +57,7 @@ def zkp_prover(veh_conn, client_rsa_manager, server_pub_bytes, VID):
         ti_R_auth_i_val_T2 = str(ti) + "&" + str(R_auth) + "&" + str(i_val) + "&" + str(T2)
 
         SecureFrame.send_encrypted_frame(veh_conn, server_pub_bytes, ti_R_auth_i_val_T2.encode())
-        proof_pi_R_auth_T3 = SecureFrame.recv_encrypted_frame(veh_conn, client_rsa_manager)
+        proof_pi_R_auth_T3 = SecureFrame.recv_encrypted_frame(veh_conn, client_rsa_manager)[0]
 
         proof_pi_R_auth_T3 = proof_pi_R_auth_T3.decode().split('&')
         ABC = proof_pi_R_auth_T3[0]
@@ -107,6 +106,7 @@ class PQClient:
     def connect_and_handshake(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
+            start = time.time()
             self.sock.connect((self.host, self.port))
             print(f"[client] Connected to {self.host}:{self.port}")
 
@@ -130,7 +130,8 @@ class PQClient:
             self.sock.send(PQCrypto.write_u32_be(len(client_pub)))
             SecureFrame.send_all(self.sock, client_pub)
 
-            print("[client] Exchanged public keys with server, entering RSA-only session.")
+            print("[client] Exchanged public keys (RSA) in",time.time()-start)
+            li.append(time.time()-start)
             return True
 
         except Exception as e:
@@ -151,7 +152,7 @@ class PQClient:
 
     def check_updates(self):
         SecureFrame.send_encrypted_frame(self.sock, self.server_pub, b"check")
-        response = SecureFrame.recv_encrypted_frame(self.sock, self.client_rsa_manager)
+        response,t = SecureFrame.recv_encrypted_frame(self.sock, self.client_rsa_manager)
         if response:
             self.available_version = response.decode()
             print(f"Current version: {self.current_version}")
@@ -167,15 +168,15 @@ class PQClient:
 
         start = time.time()
         zkp_prover(self.sock, self.client_rsa_manager, self.server_pub, self.VID)
-        res = SecureFrame.recv_encrypted_frame(self.sock, self.client_rsa_manager)
+        res,t = SecureFrame.recv_encrypted_frame(self.sock, self.client_rsa_manager)
 
         if res.decode() != "YES":
             print("[client] Zero-Knowledge Proof failed")
             return
 
         print("[client] Zero-Knowledge Proof succeeded in", time.time() - start)
-
-        response = SecureFrame.recv_encrypted_frame(self.sock, self.client_rsa_manager)
+        li.append(time.time() - start)
+        response,t = SecureFrame.recv_encrypted_frame(self.sock, self.client_rsa_manager)
         if not response or response.decode() != "OK":
             print(f"Server replied: {response.decode() if response else 'No response'}")
             return
@@ -183,18 +184,26 @@ class PQClient:
         filename = f"car_update_{self.available_version}.exe"
         print(f"Receiving {filename}...")
         start = time.time()
+        ans = 0
         try:
             with open(filename, 'wb') as f:
                 while True:
-                    chunk = SecureFrame.recv_encrypted_frame(self.sock, self.client_rsa_manager)
+                    chunk,t = SecureFrame.recv_encrypted_frame(self.sock, self.client_rsa_manager)
+                    ans += t
                     if chunk is None:
                         print("Transfer aborted")
                         break
-                    if len(chunk) == 0:  # EOF marker
+                    if len(chunk) == 0:
                         break
                     f.write(chunk)
 
             print("File downloaded successfully in", time.time() - start)
+            li.append(time.time() - start)
+            print("Decryption time:", ans)
+            li.append(ans)
+            fw.writerow(li)
+            li.clear()
+
         except Exception as e:
             print(f"File download error: {e}")
 
@@ -204,7 +213,7 @@ class PQClient:
 
     def send_command(self, command):
         SecureFrame.send_encrypted_frame(self.sock, self.server_pub, command.encode())
-        response = SecureFrame.recv_encrypted_frame(self.sock, self.client_rsa_manager)
+        response,t = SecureFrame.recv_encrypted_frame(self.sock, self.client_rsa_manager)
         if response:
             print(response.decode())
 
@@ -224,7 +233,7 @@ class PQClient:
                     self.install_updates()
                 elif choice == "4":
                     SecureFrame.send_encrypted_frame(self.sock, self.server_pub, b"close")
-                    response = SecureFrame.recv_encrypted_frame(self.sock, self.client_rsa_manager)
+                    response = SecureFrame.recv_encrypted_frame(self.sock, self.client_rsa_manager)[0]
                     if response:
                         print(response.decode())
                     break
@@ -244,3 +253,4 @@ if __name__ == "__main__":
 
     client = PQClient(sys.argv[1], int(sys.argv[2]))
     client.run()
+    f.close()

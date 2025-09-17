@@ -1,162 +1,191 @@
 """
-mceliece_crypto.py - Classic McEliece KEM + SPHINCS+ signatures
-Uses pyoqs (liboqs) for PQC and cryptography for AES-GCM
+pqcrypto.py - Post-Quantum Cryptography utilities for Python
+Uses pyoqs for PQC algorithms and cryptography library for symmetric crypto
+
+Changed to use Classic McEliece KEM and SPHINCS+ signatures by default.
+Be aware: Classic McEliece public keys and SPHINCS+ signatures are large.
 """
 
-import struct, os, time
+import struct
+import os
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
-import oqs
+import oqs,time
 
 class PQCrypto:
-    def write_u32_be(value): return struct.pack('>I', value)
-    def read_u32_be(data): return struct.unpack('>I', data)[0]
+    def write_u32_be(value):
+        return struct.pack('>I',value)
+
+    def read_u32_be(data):
+        return struct.unpack('>I',data)[0]
 
     def secure_clear(data):
         if data:
-            try:
-                for i in range(len(data)): data[i] = 0
-            except Exception:
-                pass
-
-    def hkdf_sha256(ikm, salt, info, length):
-        hkdf = HKDF(algorithm=hashes.SHA256(), length=length,
-                    salt=salt, info=info, backend=default_backend())
+            for i in range(len(data)):
+                data[i] = 0
+    
+    def hkdf_sha256(ikm,salt,info,length):
+        hkdf = HKDF(algorithm=hashes.SHA256(),length=length,salt=salt,info=info,backend=default_backend())
         return hkdf.derive(ikm)
 
-    def aes256_gcm_encrypt(key, plaintext, aad=None):
+    def aes256_gcm_encrypt(key,plaintext,aad=None):
         iv = os.urandom(12)
-        enc = Cipher(algorithms.AES(key), modes.GCM(iv), backend=default_backend()).encryptor()
-        if aad: enc.authenticate_additional_data(aad)
-        ciphertext = enc.update(plaintext) + enc.finalize()
-        return iv, ciphertext, enc.tag
+        encryptor = Cipher(algorithms.AES(key),modes.GCM(iv),backend=default_backend()).encryptor()
+        if aad: encryptor.authenticate_additional_data(aad)
+        ciphertext = encryptor.update(plaintext) + encryptor.finalize()
+        return iv, ciphertext, encryptor.tag
 
-    def aes256_gcm_decrypt(key, iv, ciphertext, tag, aad=None):
-        dec = Cipher(algorithms.AES(key), modes.GCM(iv, tag), backend=default_backend()).decryptor()
-        if aad: dec.authenticate_additional_data(aad)
-        return dec.update(ciphertext) + dec.finalize()
 
-class KEMManager:
-    def __init__(self, algorithm="Classic-McEliece-348864"):
+    def aes256_gcm_decrypt(key,iv,ciphertext,tag,aad=None):
+        decryptor = Cipher(algorithms.AES(key),modes.GCM(iv, tag),backend=default_backend()).decryptor()
+        if aad: decryptor.authenticate_additional_data(aad)
+        return decryptor.update(ciphertext) + decryptor.finalize()
+
+class KEMManager:    
+    def __init__(self,algorithm="Classic-McEliece-348864"):
+        # Default set to Classic McEliece parameter set 348864
         self.algorithm = algorithm
-        self.kem = None
+        self.kem_instance = None
         self.public_key = None
-        self.secret_key = None
+        self.secret_key_bytes = None
 
     def generate_keypair(self):
-        self.kem = oqs.KeyEncapsulation(self.algorithm)
-        self.public_key = self.kem.generate_keypair()
-        self.secret_key = self.kem.export_secret_key()
+        self.kem_instance = oqs.KeyEncapsulation(self.algorithm)
+        self.public_key = self.kem_instance.generate_keypair()
+        self.secret_key_bytes = self.kem_instance.export_secret_key()
         return self.public_key, self
 
-    def encapsulate(algorithm, public_key):
+    def encapsulate(algorithm,public_key):
         kem = oqs.KeyEncapsulation(algorithm)
         ciphertext, shared_secret = kem.encap_secret(public_key)
         return ciphertext, shared_secret
-
-    def decapsulate(self, ciphertext):
-        if not self.kem:
+    
+    def decapsulate(self,ciphertext):
+        if not self.kem_instance:
             raise RuntimeError("No KEM instance available for decapsulation")
-        return self.kem.decap_secret(ciphertext)
+        return self.kem_instance.decap_secret(ciphertext)
 
 class SignatureManager:
-    def __init__(self, algorithm="SPHINCS+-SHA2-128s-simple"):
+    def __init__(self,algorithm="SPHINCS+-SHA2-256f-simple"):
         self.algorithm = algorithm
-        self.sig = None
+        self.sig_instance = None
         self.public_key = None
-        self.secret_key = None
+        self.secret_key_bytes = None
 
     def generate_keypair(self):
-        self.sig = oqs.Signature(self.algorithm)
-        self.public_key = self.sig.generate_keypair()
-        self.secret_key = self.sig.export_secret_key()
+        self.sig_instance = oqs.Signature(self.algorithm)
+        self.public_key = self.sig_instance.generate_keypair()
+        self.secret_key_bytes = self.sig_instance.export_secret_key()
         return self.public_key, self
-
-    def sign(self, message):
-        if not self.sig:
+    
+    def sign(self,message):
+        if not self.sig_instance:
             raise RuntimeError("No signature instance available for signing")
-        return self.sig.sign(message)
+        return self.sig_instance.sign(message)
 
-    def verify(algorithm, message, signature, public_key):
+    def verify(algorithm,message,signature,public_key):
         try:
-            v = oqs.Signature(algorithm)
-            return v.verify(message, signature, public_key)
-        except Exception:
+            sig = oqs.Signature(algorithm)
+            return sig.verify(message,signature,public_key)
+        except Exception as e:
+            print(f"Signature verification error: {e}")
             return False
 
 class Certificate:
-    """
-    Simple self-signed bundle:
-      [kem_pub_len][kem_pub][sig_pub_len][sig_pub][sig_len][signature(sig_pub || kem_pub)]
-    """
-    def create_cert(kem_pub, sig_pub, sig_manager):
+    def create_cert(kem_pub,sig_pub,sig_manager):
+        # message to be signed is KEM public key concatenated with signature public key
         message = kem_pub + sig_pub
         signature = sig_manager.sign(message)
-
-        blob = b""
-        blob += PQCrypto.write_u32_be(len(kem_pub)) + kem_pub
-        blob += PQCrypto.write_u32_be(len(sig_pub)) + sig_pub
-        blob += PQCrypto.write_u32_be(len(signature)) + signature
-        return blob
-
+        
+        # Certificate: [kem_pub_len][kem_pub][sig_pub_len][sig_pub][sig_len][signature]
+        cert = b''
+        cert += PQCrypto.write_u32_be(len(kem_pub))
+        cert += kem_pub
+        cert += PQCrypto.write_u32_be(len(sig_pub))
+        cert += sig_pub
+        cert += PQCrypto.write_u32_be(len(signature))
+        cert += signature
+        return cert
+    
+    
     def parse_cert(cert):
         pos = 0
-        kem_len = PQCrypto.read_u32_be(cert[pos:pos+4]); pos += 4
-        kem_pub = cert[pos:pos+kem_len]; pos += kem_len
-        sp_len = PQCrypto.read_u32_be(cert[pos:pos+4]); pos += 4
-        sig_pub = cert[pos:pos+sp_len]; pos += sp_len
-        sig_len = PQCrypto.read_u32_be(cert[pos:pos+4]); pos += 4
-        signature = cert[pos:pos+sig_len]
+
+        kem_len = PQCrypto.read_u32_be(cert[pos:pos+4])
+        pos += 4
+        kem_pub = cert[pos:pos+kem_len]
+        pos += kem_len
+        
+        sig_len = PQCrypto.read_u32_be(cert[pos:pos+4])
+        pos += 4
+        sig_pub = cert[pos:pos+sig_len]
+        pos += sig_len
+        
+        sigblob_len = PQCrypto.read_u32_be(cert[pos:pos+4])
+        pos += 4
+        signature = cert[pos:pos+sigblob_len]
+        
         return kem_pub, sig_pub, signature
 
 class SecureFrame:
-    def send_all(sock, data):
-        total = 0
-        while total < len(data):
-            sent = sock.send(data[total:])
-            if sent == 0:
+    def send_all(sock,data):
+        total_sent = 0
+        while total_sent<len(data):
+            sent = sock.send(data[total_sent:])
+            if sent==0:
                 raise RuntimeError("Socket connection broken")
-            total += sent
-
-    def recv_all(sock, length):
-        data = b""
-        while len(data) < length:
-            chunk = sock.recv(length - len(data))
-            if not chunk:
+            total_sent += sent
+    
+    def recv_all(sock,length):
+        data = b''
+        while len(data)<length:
+            packet = sock.recv(length-len(data))
+            if not packet:
                 raise RuntimeError("Socket connection broken")
-            data += chunk
+            data += packet
         return data
-
-    def send_encrypted_frame(sock, key, plaintext):
+    
+    
+    def send_encrypted_frame(sock,key,plaintext):
         start = time.time()
-        iv, ct, tag = PQCrypto.aes256_gcm_encrypt(key, plaintext)
-        elapsed = time.time() - start
+        iv,ciphertext,tag = PQCrypto.aes256_gcm_encrypt(key,plaintext)
+        end = time.time()
 
-        sock.send(PQCrypto.write_u32_be(len(iv)));     SecureFrame.send_all(sock, iv)
-        sock.send(PQCrypto.write_u32_be(len(ct)));     SecureFrame.send_all(sock, ct)
-        sock.send(PQCrypto.write_u32_be(len(tag)));    SecureFrame.send_all(sock, tag)
-        return elapsed
+        sock.send(PQCrypto.write_u32_be(len(iv)))
+        SecureFrame.send_all(sock,iv)
+        
+        sock.send(PQCrypto.write_u32_be(len(ciphertext)))
+        SecureFrame.send_all(sock,ciphertext)
 
-    def recv_encrypted_frame(sock, key):
+        sock.send(PQCrypto.write_u32_be(len(tag)))
+        SecureFrame.send_all(sock,tag)
+        return end - start
+    
+    
+    def recv_encrypted_frame(sock,key):
         try:
-            iv_len = PQCrypto.read_u32_be(SecureFrame.recv_all(sock, 4))
-            if iv_len == 0 or iv_len > 64: raise ValueError("Invalid IV length")
-            iv = SecureFrame.recv_all(sock, iv_len)
+            iv_len = PQCrypto.read_u32_be(SecureFrame.recv_all(sock,4))
+            if iv_len==0 or iv_len>64:
+                raise ValueError("Invalid IV length")
+            iv = SecureFrame.recv_all(sock,iv_len)
 
-            ct_len = PQCrypto.read_u32_be(SecureFrame.recv_all(sock, 4))
-            if ct_len > 64*1024*1024: raise ValueError("Ciphertext too large")
-            ct = SecureFrame.recv_all(sock, ct_len) if ct_len > 0 else b""
-
-            tag_len = PQCrypto.read_u32_be(SecureFrame.recv_all(sock, 4))
-            if tag_len != 16: raise ValueError("Invalid GCM tag length")
-            tag = SecureFrame.recv_all(sock, tag_len)
-
+            ct_len = PQCrypto.read_u32_be(SecureFrame.recv_all(sock,4))
+            if ct_len > 64*1024*1024:
+                raise ValueError("Ciphertext too large")
+            ciphertext = SecureFrame.recv_all(sock,ct_len) if ct_len > 0 else b''
+            
+            tag_len = PQCrypto.read_u32_be(SecureFrame.recv_all(sock,4))
+            if tag_len != 16:
+                raise ValueError("Invalid tag length")
+            tag = SecureFrame.recv_all(sock,tag_len)
+            
             start = time.time()
-            pt = PQCrypto.aes256_gcm_decrypt(key, iv, ct, tag)
-            dec_t = time.time() - start
-            return pt, dec_t
+            pt = PQCrypto.aes256_gcm_decrypt(key,iv,ciphertext,tag)
+            end = time.time()
+            return pt,end-start
+
         except Exception as e:
             print(f"Frame receive error: {e}")
-            return None, 0.0
+            return None

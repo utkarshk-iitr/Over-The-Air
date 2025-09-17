@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """
-Classic McEliece (KEM) + SPHINCS+ (signatures) OTA Server
-- Cert: SPHINCS+ signs (KEM_pub || SIG_pub)
-- Handshake: Client encapsulates to server's McEliece KEM pub -> shared secret -> HKDF -> AES-256-GCM key
-- After ZKP/Merkle auth, streams encrypted file
+Post-Quantum Cryptography Server
+Handles secure connections using Classic McEliece KEM and SPHINCS+ signatures
 """
 
-import socket, threading, sys, time, csv
+import socket
+import threading
+import sys
 from mceliece_crypto import *
 from merkle import *
 import pyexcel as pe
+import time
+import csv
 
 f = open("server_time.csv", "a", newline="")
 fw = csv.writer(f)
@@ -17,183 +19,205 @@ li = []
 
 def get_ip():
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as s:
             s.connect(("8.8.8.8", 80))
             return s.getsockname()[0]
     except Exception:
         return "127.0.0.1"
 
-def zkp_verifier(client_sock, key):
+def zkp_verifier(client_sock,key):
     N = 16
     reg_sheet1 = pe.get_sheet(file_name="FRI_Veh_Reg.xlsx")
-
-    VID, _ = SecureFrame.recv_encrypted_frame(client_sock, key)
-    if VID is None: return 'F'
+    VID, t = SecureFrame.recv_encrypted_frame(client_sock,key)
     VID = VID.decode()
-
     reg_flag = 0
+
     for row in reg_sheet1:
-        if row[1] == VID:
+        if row[1]==VID:
             VPR = row[2]
             f_w_i = [int(i) for i in row[3].split(',')]
             f_star_w_2i = [int(i) for i in row[4].split(',')]
             reg_flag = 1
             break
-    if reg_flag != 1: return 'F'
 
-    _, mt_fw = mixmerkletree(f_w_i)
-    _, mt_fstar = mixmerkletree(f_star_w_2i)
+    if reg_flag!=1: return 'F'
+
+    _, f_w_i_mtree_obj = mixmerkletree(f_w_i)
+    _, f_star_w_2i_mtree_obj = mixmerkletree(f_star_w_2i)
 
     T1 = get_timestamp()
-    Auth_Req_VPR_T1 = "A1&" + VPR + "&" + str(T1)
-    SecureFrame.send_encrypted_frame(client_sock, key, Auth_Req_VPR_T1.encode())
+    Auth_Req_VPR_T1 = "A1&"+VPR+"&"+str(T1)
+    SecureFrame.send_encrypted_frame(client_sock,key,Auth_Req_VPR_T1.encode())
+    ti_R_auth_i_val_T2, t = SecureFrame.recv_encrypted_frame(client_sock,key)
+    ti_R_auth_i_val_T2 = ti_R_auth_i_val_T2.decode().split('&')
 
-    ti_R_auth_i_val_T2, _ = SecureFrame.recv_encrypted_frame(client_sock, key)
-    if ti_R_auth_i_val_T2 is None: return 'F'
-    ti, R_auth, i_val_s, T2s = ti_R_auth_i_val_T2.decode().split('&')
-    i_val = int(i_val_s); T2 = float(T2s)
+    ti = ti_R_auth_i_val_T2[0]
+    R_auth = ti_R_auth_i_val_T2[1]
+    i_val = int(ti_R_auth_i_val_T2[2])
+    T2 = float(ti_R_auth_i_val_T2[3])
 
-    if get_timestamp() - T2 < 4:
-        get_f_w_i_val   = f_w_i[i_val]
-        get_f_w_N2_i    = f_w_i[(N // 2) + i_val]
+    if get_timestamp()-T2<4:
+        get_f_w_i_val = f_w_i[i_val]
+        get_f_w_N2_i = f_w_i[int(N//2)+i_val]
         get_f_star_w_2i = f_star_w_2i[i_val]
-        ABC_proof = listToString([get_f_w_i_val, get_f_w_N2_i, get_f_star_w_2i])
 
-        if ti == "0":
-            auth_path_for_ti = mt_fw.getAuthenticationPath(Node.hash(str(f_w_i[i_val])), i_val)
-        else:
-            auth_path_for_ti = mt_fstar.getAuthenticationPath(Node.hash(str(f_star_w_2i[i_val])), i_val)
+        ABC_proof = [get_f_w_i_val,get_f_w_N2_i,get_f_star_w_2i]
+        ABC_proof = listToString(ABC_proof)
+
+        if ti == "0" :
+            auth_path_for_ti = f_w_i_mtree_obj.getAuthenticationPath(Node.hash(str(f_w_i[i_val])), i_val)
+
+        elif ti == "1" :
+            auth_path_for_ti = f_star_w_2i_mtree_obj.getAuthenticationPath(Node.hash(str(f_star_w_2i[i_val])), i_val)
+
+        auth_path_for_ti = str(auth_path_for_ti)
 
         T3 = get_timestamp()
-        proof = ABC_proof + "&" + str(auth_path_for_ti) + "&" + R_auth + "&" + str(T3)
-        SecureFrame.send_encrypted_frame(client_sock, key, proof.encode())
+        proof_pi_R_auth_T3 = ABC_proof+"&"+auth_path_for_ti+"&"+R_auth+"&"+str(T3)
+        SecureFrame.send_encrypted_frame(client_sock,key,proof_pi_R_auth_T3.encode())
+        VIDnew_Auth_status_S_auth, t = SecureFrame.recv_encrypted_frame(client_sock,key)
+        VIDnew_Auth_status_S_auth = VIDnew_Auth_status_S_auth.decode().split('&')
 
-        VIDnew_Auth_status_S_auth, _ = SecureFrame.recv_encrypted_frame(client_sock, key)
-        if VIDnew_Auth_status_S_auth is None: return 'F'
-        parts = VIDnew_Auth_status_S_auth.decode().split('&')
-        if len(parts) >= 2 and parts[1] == "S":
+        if VIDnew_Auth_status_S_auth[1]=="S":
             return 'S'
-    return 'F'
+    else :
+        return 'F'
 
-class McElieceSPHINCSServer:
-    def __init__(self, host, port,
-                 kem_alg="Classic-McEliece-348864",
-                 sig_alg="SPHINCS+-SHA2-128s-simple"):
+
+class PQServer:
+    def __init__(self, host, port):
         self.host = host
         self.port = port
-        self.kem_alg = kem_alg
-        self.sig_alg = sig_alg
+        # Use Classic McEliece and SPHINCS+ by default
+        self.kem_alg = "Classic-McEliece-348864"
+        self.sig_alg = "SPHINCS+-SHA2-256f-simple"
         self.server_version = "1.0.3"
 
-    def handle_client(self, client_sock, client_addr):
+    def handle_client(self,client_sock,client_addr):
         print(f"[server] Client connected: {client_addr}")
+        
         try:
-            # --- Handshake (cert + encapsulation) ---
             start = time.time()
-            kem_mgr = KEMManager(self.kem_alg)
-            kem_pub, kem_mgr = kem_mgr.generate_keypair()
+            kem_manager = KEMManager(self.kem_alg)
+            kem_pub, kem_manager = kem_manager.generate_keypair()
 
-            sig_mgr = SignatureManager(self.sig_alg)
-            sig_pub, sig_mgr = sig_mgr.generate_keypair()
-
-            cert = Certificate.create_cert(kem_pub, sig_pub, sig_mgr)
+            sig_manager = SignatureManager(self.sig_alg)
+            sig_pub, sig_manager = sig_manager.generate_keypair()
+            
+            cert = Certificate.create_cert(kem_pub,sig_pub,sig_manager)
             client_sock.send(PQCrypto.write_u32_be(len(cert)))
-            SecureFrame.send_all(client_sock, cert)
-
-            ct_len = PQCrypto.read_u32_be(SecureFrame.recv_all(client_sock, 4))
-            ciphertext = SecureFrame.recv_all(client_sock, ct_len)
-            shared_secret = kem_mgr.decapsulate(ciphertext)
-
+            SecureFrame.send_all(client_sock,cert)
+            
+            ct_len = PQCrypto.read_u32_be(SecureFrame.recv_all(client_sock,4))
+            ciphertext = SecureFrame.recv_all(client_sock,ct_len)
+            shared_secret = kem_manager.decapsulate(ciphertext)
+            
             salt = b"server-salt-v1"
-            info = b"mce-sphincs-handshake-v1"
-            aes_key = PQCrypto.hkdf_sha256(shared_secret, salt, info, 32)
-            shared_secret = bytearray(shared_secret); PQCrypto.secure_clear(shared_secret)
-
-            htime = time.time() - start
-            print(f"[server] Secure handshake completed in {htime:.4f}s\n")
-            li.append(htime)
-
-            self.command_loop(client_sock, aes_key)
-
+            info = b"pq-handshake-v1"
+            aes_key = PQCrypto.hkdf_sha256(shared_secret,salt,info,32)
+            shared_secret = bytearray(shared_secret)
+            PQCrypto.secure_clear(shared_secret)
+            
+            print("[server] Secure handshake completed in",time.time()-start,"\n")
+            li.append(time.time()-start)
+            self.command_loop(client_sock,aes_key)
+            
         except Exception as e:
-            print(f"[server] Error: {e}")
+            print(f"[server] Error handling client {client_addr}: {e}")
+            import traceback
+            traceback.print_exc()
         finally:
-            try: client_sock.close()
-            except: pass
+            client_sock.close()
             print(f"[server] Client {client_addr} disconnected\n")
-
-    def command_loop(self, client_sock, key):
+    
+    def command_loop(self,client_sock,key):
         while True:
-            plaintext, _ = SecureFrame.recv_encrypted_frame(client_sock, key)
-            if plaintext is None: break
-            if len(plaintext) == 0: continue
+            try:
+                plaintext, t = SecureFrame.recv_encrypted_frame(client_sock,key)
+                if plaintext is None:
+                    break
+                
+                command = plaintext.decode('utf-8')
+                print(f"[server] Received command: {command}")
+                
+                if command=="close":
+                    response = "Closing connection...\n"
+                    SecureFrame.send_encrypted_frame(client_sock,key,response.encode())
+                    break
+                    
+                elif command=="check":
+                    SecureFrame.send_encrypted_frame(client_sock,key,self.server_version.encode())
 
-            cmd = plaintext.decode('utf-8')
-            print(f"[server] Received command: {cmd}")
+                elif command.startswith("get "):
+                    version = command[4:]
+                    self.handle_file_download(client_sock,key,version)
 
-            if cmd == "close":
-                SecureFrame.send_encrypted_frame(client_sock, key, b"Closing connection...\n")
+                else:
+                    response = "Invalid command\n"
+                    SecureFrame.send_encrypted_frame(client_sock,key,response.encode())
+
+            except Exception as e:
+                print(f"[server] Command processing error: {e}")
                 break
-            elif cmd == "check":
-                SecureFrame.send_encrypted_frame(client_sock, key, self.server_version.encode())
-            elif cmd.startswith("get "):
-                version = cmd[4:]
-                self.handle_file_download(client_sock, key, version)
-            else:
-                SecureFrame.send_encrypted_frame(client_sock, key, b"Invalid command\n")
-
-    def handle_file_download(self, client_sock, key, version):
+    
+    def handle_file_download(self,client_sock,key,version):
         start = time.time()
-        if zkp_verifier(client_sock, key) != 'S':
+        if zkp_verifier(client_sock,key)!='S':
             print("[server] Zero-Knowledge Proof failed")
-            SecureFrame.send_encrypted_frame(client_sock, key, b"NO")
+            SecureFrame.send_encrypted_frame(client_sock,key,b"NO")
             return
-
-        zkp_t = time.time() - start
-        print(f"[server] Zero-Knowledge Proof succeeded in {zkp_t:.4f}s")
-        li.append(zkp_t)
-        SecureFrame.send_encrypted_frame(client_sock, key, b"YES")
-
+        print("[server] Zero-Knowledge Proof succeeded in",time.time()-start)
+        li.append(time.time()-start)
+        SecureFrame.send_encrypted_frame(client_sock,key,b"YES")
         filename = f"update_{version}.exe"
         start = time.time()
-        enc_agg = 0.0
+        
+        ans = 0
         try:
-            with open(filename, 'rb') as f:
-                enc_agg += SecureFrame.send_encrypted_frame(client_sock, key, b"OK")
-                chunk = f.read(4096)
-                while chunk:
-                    enc_agg += SecureFrame.send_encrypted_frame(client_sock, key, chunk)
-                    chunk = f.read(4096)
-                SecureFrame.send_encrypted_frame(client_sock, key, b"")  # EOF
+            with open(filename,'rb') as f:
+                ans += SecureFrame.send_encrypted_frame(client_sock,key,b"OK")
+                chunk_size = 4096
+                while True:
+                    chunk = f.read(chunk_size)
+                    if not chunk:
+                        SecureFrame.send_encrypted_frame(client_sock,key,b"")
+                        break
+                    SecureFrame.send_encrypted_frame(client_sock,key,chunk)
+            print("[server] File transfer completed in",time.time()-start)
+            li.append(time.time()-start)
+            print(f"Encryption time: {ans} seconds")
+            li.append(ans)
+            fw.writerow(li)
+            li.clear()
 
-            xfer_t = time.time() - start
-            print(f"[server] File transfer completed in {xfer_t:.4f}s")
-            print(f"[server] Total encryption time: {enc_agg:.4f}s")
-            li.append(xfer_t); li.append(enc_agg); fw.writerow(li); li.clear()
         except FileNotFoundError:
-            print(f"[server] File not found: {filename}")
-            SecureFrame.send_encrypted_frame(client_sock, key, b"NO")
+            SecureFrame.send_encrypted_frame(client_sock,key,b"NO")
 
     def start(self):
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server_sock = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+        server_sock.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+        
         try:
-            s.bind((self.host, self.port))
-            s.listen(16)
+            server_sock.bind((self.host,self.port))
+            server_sock.listen(16)
             print(f"[server] Listening on {self.host}:{self.port}")
+            
             while True:
-                c, addr = s.accept()
-                t = threading.Thread(target=self.handle_client, args=(c, addr), daemon=True)
-                t.start()
+                client_sock,client_addr = server_sock.accept()
+                thread = threading.Thread(target=self.handle_client,args=(client_sock,client_addr))
+                thread.daemon = True
+                thread.start()
+                
         except KeyboardInterrupt:
             print("\n[server] Shutting down...")
         finally:
-            s.close()
+            server_sock.close()
 
-if __name__ == "__main__":
-    if len(sys.argv) != 2:
+if __name__=="__main__":
+    if len(sys.argv)!=2:
         print(f"Usage: {sys.argv[0]} <port>")
         sys.exit(1)
-    server = McElieceSPHINCSServer(get_ip(), int(sys.argv[1]))
+
+    server = PQServer(get_ip(),int(sys.argv[1]))
     server.start()
     f.close()

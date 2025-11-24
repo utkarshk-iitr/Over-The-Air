@@ -1,38 +1,30 @@
-OTA/
-├── DH/
-│   ├── client_dh.py
-│   ├── dh_crypto.py
-│   ├── merkle.py
-│   ├── server_dh.py
-│   ├── FRI_TA_Reg.xlsx
-│   ├── FRI_Veh_Reg.xlsx
-│   ├── client_time.csv
-│   ├── server_time.csv
-│   └── update_1.0.3.exe
-│
-├── PQ/
-│   ├── client_pq.py
-│   ├── pqcrypto.py
-│   ├── registration.py            # TA + Manufacturer (creates FRI_* Excel files)
-│   ├── merkle.py
-│   ├── server_pq.py
-│   ├── FRI_TA_Reg.xlsx
-│   ├── FRI_Veh_Reg.xlsx
-│   ├── client_time.csv
-│   ├── server_time.csv
-│   └── update_1.0.3.exe
-│
-├── RSA/
-│   ├── client_rsa.py
-│   ├── rsa_crypto.py
-│   ├── registration.py            # (same TA workflow as PQ; you pasted this too)
-│   ├── merkle.py
-│   ├── server_rsa.py
-│   ├── FRI_TA_Reg.xlsx
-│   ├── FRI_Veh_Reg.xlsx
-│   ├── client_time.csv
-│   ├── server_time.csv
-│   └── update_1.0.3.exe
-│
-├── README.md                      # top-level (below)
-└── requirements.txt               # shared deps (below)
+# Over-The-Air (OTA) Update System
+
+A comprehensive Over-The-Air update management system for deploying firmware and software updates to connected autonomous vehicles.
+
+## Prerequisites
+
+- [liboqs] (https://github.com/open-quantum-safe/liboqs)
+- [liboqs-python] (Installs along with liboqs)
+- [oqs] (pip install oqs)
+- [pyoqs_sdk] (https://github.com/sagarbhure/pyoqs_sdk)
+
+## Running the Project
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/yourusername/Over-The-Air.git
+   cd Over-The-Air/PQ
+   ```
+   
+2. **Start the server**
+    ```bash
+   python3 server_pq.py <Port>
+   ```
+
+3. **Run the client**
+    ```bash
+    python3 client_pq.py <Server IP> <Port>
+    ```
+
+Continue with the steps in program

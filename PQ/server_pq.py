@@ -12,6 +12,7 @@ from merkle import *
 import pyexcel as pe
 import time
 import csv
+import random,string
 
 f = open("server_time.csv", "a", newline="")
 fw = csv.writer(f)

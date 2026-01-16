@@ -25,65 +25,78 @@ def get_ip():
     except Exception:
         return "127.0.0.1"
 
-def zkp_verifier(client_sock, server_rsa_manager, client_pub_bytes):
+def zkp_verifier(client_sock, key):
     N = 16
+    prime_field = 17
+    w = 7
+
     reg_sheet1 = pe.get_sheet(file_name="FRI_Veh_Reg.xlsx")
+    VID, _ = SecureFrame.recv_encrypted_frame(client_sock, key)
+    VID = VID.decode()
 
-    VID_bytes,t = SecureFrame.recv_encrypted_frame(client_sock, server_rsa_manager)
-    VID = VID_bytes.decode()
-    reg_flag = 0
-
+    found = 0
     for row in reg_sheet1:
         if row[1] == VID:
             VPR = row[2]
-            f_w_i = [int(i) for i in row[3].split(',')]
-            f_star_w_2i = [int(i) for i in row[4].split(',')]
-            reg_flag = 1
+            f = [int(i) for i in row[3].split(',')]
+            f_star = [int(i) for i in row[4].split(',')]
+            MR_fx = row[5]
+            MR_fstar = row[6]
+            alpha = row[7]
+            found = 1
             break
 
-    if reg_flag != 1:
+    if found != 1:
+        SecureFrame.send_encrypted_frame(client_sock, key, b"NO")
         return 'F'
 
-    _, f_w_i_mtree_obj = mixmerkletree(f_w_i)
-    _, f_star_w_2i_mtree_obj = mixmerkletree(f_star_w_2i)
-
+    i_val = random.randint(0, N//2 - 1)
+    t = random.randint(0, 1)
+    R_auth = random.randint(100, 100000)
     T1 = get_timestamp()
-    Auth_Req_VPR_T1 = "A1&" + VPR + "&" + str(T1)
-    SecureFrame.send_encrypted_frame(client_sock, client_pub_bytes, Auth_Req_VPR_T1.encode())
 
-    ti_R_auth_i_val_T2,t = SecureFrame.recv_encrypted_frame(client_sock, server_rsa_manager)
-    ti_R_auth_i_val_T2 = ti_R_auth_i_val_T2.decode().split('&')
+    chall = f"{VPR}&{t}&{i_val}&{R_auth}&{T1}"
+    SecureFrame.send_encrypted_frame(client_sock, key, chall.encode())
 
-    ti = ti_R_auth_i_val_T2[0]
-    R_auth = ti_R_auth_i_val_T2[1]
-    i_val = int(ti_R_auth_i_val_T2[2])
-    T2 = float(ti_R_auth_i_val_T2[3])
+    proof_msg, _ = SecureFrame.recv_encrypted_frame(client_sock, key)
+    proof_msg = proof_msg.decode().split('&')
 
-    if get_timestamp() - T2 < 4:
-        get_f_w_i_val = f_w_i[i_val]
-        get_f_w_N2_i = f_w_i[int(N // 2) + i_val]
-        get_f_star_w_2i = f_star_w_2i[i_val]
-
-        ABC_proof = [get_f_w_i_val, get_f_w_N2_i, get_f_star_w_2i]
-        ABC_proof = listToString(ABC_proof)
-
-        if ti == "0":
-            auth_path_for_ti = f_w_i_mtree_obj.getAuthenticationPath(Node.hash(str(f_w_i[i_val])), i_val)
-
-        elif ti == "1":
-            auth_path_for_ti = f_star_w_2i_mtree_obj.getAuthenticationPath(Node.hash(str(f_star_w_2i[i_val])), i_val)
-
-        auth_path_for_ti = str(auth_path_for_ti)
-
-        T3 = get_timestamp()
-        proof_pi_R_auth_T3 = ABC_proof + "&" + auth_path_for_ti + "&" + R_auth + "&" + str(T3)
-        SecureFrame.send_encrypted_frame(client_sock, client_pub_bytes, proof_pi_R_auth_T3.encode())
-
-        VIDnew_Auth_status_S_auth = SecureFrame.recv_encrypted_frame(client_sock, server_rsa_manager)[0].decode().split('&')
-        if VIDnew_Auth_status_S_auth[1] == "S":
-            return 'S'
-    else:
+    if len(proof_msg) != 4:
+        SecureFrame.send_encrypted_frame(client_sock, key, b"NO")
         return 'F'
+
+    ABC, auth_path, R_auth_star, T2 = proof_msg
+    A, B, C = map(int, ABC.split(','))
+    R_auth_star = int(R_auth_star)
+    T2 = float(T2)
+
+    if R_auth_star != R_auth or get_timestamp() - T2 > 4:
+        SecureFrame.send_encrypted_frame(client_sock, key, b"NO")
+        return 'F'
+
+    auth_path = eval(auth_path)
+    if t == 0:
+        if Ver_merkle_path(auth_path, MR_fx) != 1:
+            SecureFrame.send_encrypted_frame(client_sock, key, b"NO")
+            return 'F'
+    else:
+        if Ver_merkle_path(auth_path, MR_fstar) != 1:
+            SecureFrame.send_encrypted_frame(client_sock, key, b"NO")
+            return 'F'
+
+    w_inv = pow(w, -i_val, prime_field)
+    inv2 = pow(2, -1, prime_field)
+
+    y = ((1 + alpha * w_inv) * A + (1 - alpha * w_inv) * B) * inv2
+    y %= prime_field
+
+    if y != C:
+        SecureFrame.send_encrypted_frame(client_sock, key, b"NO")
+        return 'F'
+        
+    SecureFrame.send_encrypted_frame(client_sock, key, b"YES")
+    return 'S'
+
 
 
 class PQServer:

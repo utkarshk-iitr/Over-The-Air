@@ -10,7 +10,6 @@ from pqcrypto import *
 import pyexcel as pe
 import time
 from merkle import *
-import random,string
 import csv
 
 f2 = open("client_time.csv", "a", newline="")
@@ -59,18 +58,15 @@ def zkp_prover(veh_conn, key, VID):
     C = f_star[i_val]
 
     if t == 0:
-        auth_path = MerklePath(f, i_val)
+        f_mtree = MerkleTree(f)
+        auth_path = f_mtree.getAuthenticationPath(Node.hash(str(f[i_val])), i_val)
     else:
-        auth_path = MerklePath(f_star, i_val)
+        f_star_mtree = MerkleTree(f_star)
+        auth_path = f_star_mtree.getAuthenticationPath(Node.hash(str(f_star[i_val])), i_val)
 
     T2 = get_timestamp()
 
-    proof_msg = (
-        f"{A},{B},{C}"
-        "&" + str(auth_path)
-        "&" + str(R_auth)
-        "&" + str(T2)
-    )
+    proof_msg = (f"{A},{B},{C}"+"&" + str(auth_path)+"&" + str(R_auth)+"&" + str(T2))
     SecureFrame.send_encrypted_frame(veh_conn, key, proof_msg.encode())
           
 
